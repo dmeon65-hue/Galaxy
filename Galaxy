@@ -1,1501 +1,283 @@
-local Players = game:GetService("Players")
+llocal Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local LocalPlayer = Players.LocalPlayer
+
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+local camera = workspace.CurrentCamera
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ToolsCreatorV1"
+ScreenGui.Name = "SkillButtons"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.Parent = LocalPlayer.PlayerGui
+ScreenGui.Parent = player.PlayerGui
 
-local toolsList = {}
-local guiVisible = false
-local selectedToolIndex = nil
+local isVisible = true
+local hakuLoopRunning = false
+local hakuLoopThread = nil
+local cooldowns = {}
+local selectingTarget = false
+local COOLDOWN_TIME = 1
 
-local function makeDraggable(frame, handle)
-    local dragging = false
-    local dragInput, mousePos, framePos
-    handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            mousePos = input.Position
-            framePos = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
-        end
-    end)
-    handle.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - mousePos
-            frame.Position = UDim2.new(framePos.X.Scale, framePos.X.Offset + delta.X, framePos.Y.Scale, framePos.Y.Offset + delta.Y)
-        end
-    end)
+local buttonContainer = Instance.new("Frame")
+buttonContainer.Name = "ButtonContainer"
+buttonContainer.Size = UDim2.new(0, 85, 0, 220)
+buttonContainer.Position = UDim2.new(1, -90, 0, 5)
+buttonContainer.BackgroundTransparency = 1
+buttonContainer.Parent = ScreenGui
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Name = "ToggleButton"
+toggleButton.Size = UDim2.new(0, 28, 0, 16)
+toggleButton.Position = UDim2.new(0, 5, 0, 5)
+toggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+toggleButton.BorderSizePixel = 1
+toggleButton.Text = "HIDE"
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.TextSize = 7
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.Parent = ScreenGui
+
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 3)
+toggleCorner.Parent = toggleButton
+
+local layout = Instance.new("UIListLayout")
+layout.FillDirection = Enum.FillDirection.Vertical
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+layout.VerticalAlignment = Enum.VerticalAlignment.Top
+layout.Padding = UDim.new(0, 3)
+layout.Parent = buttonContainer
+
+local function fireSkillEvent(args)
+	ReplicatedStorage:WaitForChild("Events"):WaitForChild("Skill"):FireServer(unpack(args))
 end
 
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Name = "ToggleBtn"
-ToggleBtn.Size = UDim2.new(0, 56, 0, 56)
-ToggleBtn.Position = UDim2.new(0, 14, 0.5, -28)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(6, 0, 20)
-ToggleBtn.BorderSizePixel = 0
-ToggleBtn.Text = "🛠️"
-ToggleBtn.TextSize = 26
-ToggleBtn.Font = Enum.Font.GothamBold
-ToggleBtn.ZIndex = 15
-ToggleBtn.Parent = ScreenGui
-
-Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(1, 0)
-
-local tStroke = Instance.new("UIStroke", ToggleBtn)
-tStroke.Color = Color3.fromRGB(160, 50, 255)
-tStroke.Thickness = 2.5
-
-local tGrad = Instance.new("UIGradient", ToggleBtn)
-tGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(50, 0, 120)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(6, 0, 20))
-})
-tGrad.Rotation = 135
-
-makeDraggable(ToggleBtn, ToggleBtn)
-
-local NotifFrame = Instance.new("Frame")
-NotifFrame.Name = "Notif"
-NotifFrame.Size = UDim2.new(0, 280, 0, 50)
-NotifFrame.Position = UDim2.new(0.5, -140, 0, -60)
-NotifFrame.BackgroundColor3 = Color3.fromRGB(10, 0, 35)
-NotifFrame.BorderSizePixel = 0
-NotifFrame.ZIndex = 20
-NotifFrame.Parent = ScreenGui
-
-Instance.new("UICorner", NotifFrame).CornerRadius = UDim.new(0, 12)
-local nStroke = Instance.new("UIStroke", NotifFrame)
-nStroke.Color = Color3.fromRGB(120, 20, 240)
-nStroke.Thickness = 2
-
-local NotifLabel = Instance.new("TextLabel", NotifFrame)
-NotifLabel.Size = UDim2.new(1, -16, 1, 0)
-NotifLabel.Position = UDim2.new(0, 8, 0, 0)
-NotifLabel.BackgroundTransparency = 1
-NotifLabel.Text = ""
-NotifLabel.TextColor3 = Color3.fromRGB(210, 170, 255)
-NotifLabel.TextSize = 12
-NotifLabel.Font = Enum.Font.GothamBold
-NotifLabel.TextWrapped = true
-NotifLabel.ZIndex = 21
-
-local notifActive = false
-local function showNotif(text, color)
-    if notifActive then return end
-    notifActive = true
-    NotifLabel.Text = text
-    NotifLabel.TextColor3 = color or Color3.fromRGB(210, 170, 255)
-    nStroke.Color = color or Color3.fromRGB(120, 20, 240)
-    TweenService:Create(NotifFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Position = UDim2.new(0.5, -140, 0, 10)}):Play()
-    task.wait(2.5)
-    TweenService:Create(NotifFrame, TweenInfo.new(0.25), {Position = UDim2.new(0.5, -140, 0, -60)}):Play()
-    task.wait(0.3)
-    notifActive = false
+local function fireServerRemote(args)
+	ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("ServerRemote"):FireServer(unpack(args))
 end
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 420, 0, 580)
-MainFrame.Position = UDim2.new(0.5, -210, 0.5, -290)
-MainFrame.BackgroundColor3 = Color3.fromRGB(4, 0, 16)
-MainFrame.BorderSizePixel = 0
-MainFrame.ZIndex = 10
-MainFrame.Visible = false
-MainFrame.ClipsDescendants = true
-MainFrame.Parent = ScreenGui
+local function createButton(name, displayName, callback)
+	local btn = Instance.new("TextButton")
+	btn.Name = name
+	btn.Size = UDim2.new(0, 85, 0, 22)
+	btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	btn.BorderSizePixel = 1
+	btn.BorderColor3 = Color3.fromRGB(80, 80, 120)
+	btn.Text = displayName
+	btn.TextColor3 = Color3.fromRGB(220, 220, 255)
+	btn.TextSize = 7
+	btn.Font = Enum.Font.GothamBold
+	btn.AutoButtonColor = false
+	btn.Parent = buttonContainer
 
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 18)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = btn
 
-local mStroke = Instance.new("UIStroke", MainFrame)
-mStroke.Color = Color3.fromRGB(110, 15, 230)
-mStroke.Thickness = 2.5
+	local cooldownOverlay = Instance.new("Frame")
+	cooldownOverlay.Name = "CooldownOverlay"
+	cooldownOverlay.Size = UDim2.new(1, 0, 1, 0)
+	cooldownOverlay.Position = UDim2.new(0, 0, 0, 0)
+	cooldownOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	cooldownOverlay.BackgroundTransparency = 1
+	cooldownOverlay.ZIndex = 2
+	cooldownOverlay.Parent = btn
 
-local bgGrad = Instance.new("UIGradient", MainFrame)
-bgGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 0, 38)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(18, 0, 55)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(6, 0, 24))
-})
-bgGrad.Rotation = 145
+	local cooldownCorner = Instance.new("UICorner")
+	cooldownCorner.CornerRadius = UDim.new(0, 4)
+	cooldownCorner.Parent = cooldownOverlay
 
-for i = 1, 50 do
-    local star = Instance.new("Frame", MainFrame)
-    local sz = math.random(2, 6)
-    star.Size = UDim2.new(0, sz, 0, sz)
-    star.Position = UDim2.new(math.random(0, 100)/100, 0, math.random(0, 100)/100, 0)
-    star.BackgroundColor3 = Color3.fromRGB(math.random(200,255), math.random(150,255), 255)
-    star.BackgroundTransparency = math.random(50, 88)/100
-    star.BorderSizePixel = 0
-    star.ZIndex = 10
-    Instance.new("UICorner", star).CornerRadius = UDim.new(1, 0)
-    local tw = TweenService:Create(star, TweenInfo.new(math.random(12,35)/10, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {BackgroundTransparency = math.random(5,30)/100})
-    tw:Play()
+	cooldowns[name] = false
+
+	btn.MouseButton1Click:Connect(function()
+		if cooldowns[name] then return end
+		cooldowns[name] = true
+		btn.BackgroundColor3 = Color3.fromRGB(60, 20, 20)
+		cooldownOverlay.BackgroundTransparency = 0.5
+
+		local success, err = pcall(callback)
+		if not success then
+			warn("Error on " .. name .. ": " .. tostring(err))
+		end
+
+		task.delay(COOLDOWN_TIME, function()
+			cooldowns[name] = false
+			btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+			cooldownOverlay.BackgroundTransparency = 1
+		end)
+	end)
+
+	btn.MouseButton1Down:Connect(function()
+		if not cooldowns[name] then
+			btn.BackgroundColor3 = Color3.fromRGB(50, 50, 80)
+		end
+	end)
+
+	btn.MouseButton1Up:Connect(function()
+		if not cooldowns[name] then
+			btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+		end
+	end)
+
+	return btn
 end
 
-local TitleBar = Instance.new("Frame", MainFrame)
-TitleBar.Size = UDim2.new(1, 0, 0, 52)
-TitleBar.Position = UDim2.new(0, 0, 0, 0)
-TitleBar.BackgroundColor3 = Color3.fromRGB(12, 0, 45)
-TitleBar.BorderSizePixel = 0
-TitleBar.ZIndex = 12
+local overlayFrame = Instance.new("Frame")
+overlayFrame.Name = "TargetOverlay"
+overlayFrame.Size = UDim2.new(1, 0, 1, 0)
+overlayFrame.Position = UDim2.new(0, 0, 0, 0)
+overlayFrame.BackgroundTransparency = 0.7
+overlayFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+overlayFrame.ZIndex = 10
+overlayFrame.Visible = false
+overlayFrame.Parent = ScreenGui
 
-Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 18)
+local overlayLabel = Instance.new("TextLabel")
+overlayLabel.Size = UDim2.new(1, 0, 0, 30)
+overlayLabel.Position = UDim2.new(0, 0, 0.5, -15)
+overlayLabel.BackgroundTransparency = 1
+overlayLabel.Text = "Klik area target untuk IceSword"
+overlayLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+overlayLabel.TextSize = 18
+overlayLabel.Font = Enum.Font.GothamBold
+overlayLabel.ZIndex = 11
+overlayLabel.Parent = overlayFrame
 
-local tFix = Instance.new("Frame", TitleBar)
-tFix.Size = UDim2.new(1, 0, 0.5, 0)
-tFix.Position = UDim2.new(0, 0, 0.5, 0)
-tFix.BackgroundColor3 = Color3.fromRGB(12, 0, 45)
-tFix.BorderSizePixel = 0
-tFix.ZIndex = 12
+local function getWorldPositionFromMouse()
+	local unitRay = camera:ScreenPointToRay(mouse.X, mouse.Y)
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	raycastParams.FilterDescendantsInstances = {player.Character}
 
-local titleGrad = Instance.new("UIGradient", TitleBar)
-titleGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(110, 15, 240)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(60, 0, 160)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 0, 80))
-})
-
-local TitleIcon = Instance.new("TextLabel", TitleBar)
-TitleIcon.Size = UDim2.new(0, 38, 1, 0)
-TitleIcon.Position = UDim2.new(0, 10, 0, 0)
-TitleIcon.BackgroundTransparency = 1
-TitleIcon.Text = "🌌"
-TitleIcon.TextSize = 22
-TitleIcon.Font = Enum.Font.GothamBold
-TitleIcon.ZIndex = 13
-
-local TitleLabel = Instance.new("TextLabel", TitleBar)
-TitleLabel.Size = UDim2.new(1, -180, 0, 26)
-TitleLabel.Position = UDim2.new(0, 52, 0, 6)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Tools Creator"
-TitleLabel.TextColor3 = Color3.fromRGB(220, 170, 255)
-TitleLabel.TextSize = 17
-TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.ZIndex = 13
-
-local VersionLabel = Instance.new("TextLabel", TitleBar)
-VersionLabel.Size = UDim2.new(1, -180, 0, 16)
-VersionLabel.Position = UDim2.new(0, 52, 0, 32)
-VersionLabel.BackgroundTransparency = 1
-VersionLabel.Text = "v1.0 · Galaxy Edition ✦"
-VersionLabel.TextColor3 = Color3.fromRGB(130, 80, 200)
-VersionLabel.TextSize = 10
-VersionLabel.Font = Enum.Font.Gotham
-VersionLabel.TextXAlignment = Enum.TextXAlignment.Left
-VersionLabel.ZIndex = 13
-
-local CloseBtn = Instance.new("TextButton", TitleBar)
-CloseBtn.Size = UDim2.new(0, 32, 0, 32)
-CloseBtn.Position = UDim2.new(1, -42, 0.5, -16)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 60)
-CloseBtn.BorderSizePixel = 0
-CloseBtn.Text = "✕"
-CloseBtn.TextColor3 = Color3.fromRGB(255,255,255)
-CloseBtn.TextSize = 13
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.ZIndex = 14
-Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(1, 0)
-
-local MinBtn = Instance.new("TextButton", TitleBar)
-MinBtn.Size = UDim2.new(0, 32, 0, 32)
-MinBtn.Position = UDim2.new(1, -80, 0.5, -16)
-MinBtn.BackgroundColor3 = Color3.fromRGB(110, 65, 0)
-MinBtn.BorderSizePixel = 0
-MinBtn.Text = "─"
-MinBtn.TextColor3 = Color3.fromRGB(255, 220, 100)
-MinBtn.TextSize = 13
-MinBtn.Font = Enum.Font.GothamBold
-MinBtn.ZIndex = 14
-Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(1, 0)
-
-local ToolCountBadge = Instance.new("TextLabel", TitleBar)
-ToolCountBadge.Size = UDim2.new(0, 32, 0, 32)
-ToolCountBadge.Position = UDim2.new(1, -118, 0.5, -16)
-ToolCountBadge.BackgroundColor3 = Color3.fromRGB(80, 10, 180)
-ToolCountBadge.BorderSizePixel = 0
-ToolCountBadge.Text = "0"
-ToolCountBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToolCountBadge.TextSize = 12
-ToolCountBadge.Font = Enum.Font.GothamBold
-ToolCountBadge.ZIndex = 14
-Instance.new("UICorner", ToolCountBadge).CornerRadius = UDim.new(1, 0)
-
-makeDraggable(MainFrame, TitleBar)
-
-local TabBar = Instance.new("Frame", MainFrame)
-TabBar.Size = UDim2.new(1, -20, 0, 38)
-TabBar.Position = UDim2.new(0, 10, 0, 57)
-TabBar.BackgroundColor3 = Color3.fromRGB(8, 0, 26)
-TabBar.BorderSizePixel = 0
-TabBar.ZIndex = 12
-Instance.new("UICorner", TabBar).CornerRadius = UDim.new(0, 11)
-
-local TabLayout = Instance.new("UIListLayout", TabBar)
-TabLayout.FillDirection = Enum.FillDirection.Horizontal
-TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-TabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-TabLayout.Padding = UDim.new(0, 5)
-
-local tabPages = {}
-
-local function createTab(name, icon)
-    local btn = Instance.new("TextButton", TabBar)
-    btn.Size = UDim2.new(0, 90, 0, 30)
-    btn.BackgroundColor3 = Color3.fromRGB(18, 0, 50)
-    btn.BorderSizePixel = 0
-    btn.Text = icon .. " " .. name
-    btn.TextColor3 = Color3.fromRGB(150, 100, 210)
-    btn.TextSize = 11
-    btn.Font = Enum.Font.GothamBold
-    btn.ZIndex = 13
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 9)
-
-    local page = Instance.new("ScrollingFrame", MainFrame)
-    page.Size = UDim2.new(1, -10, 1, -104)
-    page.Position = UDim2.new(0, 5, 0, 100)
-    page.BackgroundTransparency = 1
-    page.BorderSizePixel = 0
-    page.ScrollBarThickness = 3
-    page.ScrollBarImageColor3 = Color3.fromRGB(130, 40, 230)
-    page.CanvasSize = UDim2.new(0, 0, 0, 0)
-    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    page.ZIndex = 11
-    page.Visible = false
-
-    local layout = Instance.new("UIListLayout", page)
-    layout.Padding = UDim.new(0, 7)
-    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-    local pad = Instance.new("UIPadding", page)
-    pad.PaddingTop = UDim.new(0, 8)
-    pad.PaddingBottom = UDim.new(0, 12)
-
-    tabPages[name] = {btn = btn, page = page}
-
-    btn.MouseButton1Click:Connect(function()
-        for _, t in pairs(tabPages) do
-            t.page.Visible = false
-            t.btn.BackgroundColor3 = Color3.fromRGB(18, 0, 50)
-            t.btn.TextColor3 = Color3.fromRGB(150, 100, 210)
-        end
-        page.Visible = true
-        btn.BackgroundColor3 = Color3.fromRGB(100, 18, 220)
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    end)
-
-    return page
+	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, raycastParams)
+	if result then
+		return result.Position
+	else
+		return unitRay.Origin + unitRay.Direction * 100
+	end
 end
 
-local createPage = createTab("Buat", "✨")
-local managePage = createTab("Kelola", "📋")
-local editPage = createTab("Edit", "✏️")
-local settingsPage = createTab("Setting", "⚙️")
+local function selectTargetPosition(callback)
+	if selectingTarget then return end
+	selectingTarget = true
+	overlayFrame.Visible = true
 
-local function switchTab(name)
-    for _, t in pairs(tabPages) do
-        t.page.Visible = false
-        t.btn.BackgroundColor3 = Color3.fromRGB(18, 0, 50)
-        t.btn.TextColor3 = Color3.fromRGB(150, 100, 210)
-    end
-    tabPages[name].page.Visible = true
-    tabPages[name].btn.BackgroundColor3 = Color3.fromRGB(100, 18, 220)
-    tabPages[name].btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	local connection
+	connection = overlayFrame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or
+			input.UserInputType == Enum.UserInputType.MouseButton1 then
+			local pos = getWorldPositionFromMouse()
+			overlayFrame.Visible = false
+			selectingTarget = false
+			connection:Disconnect()
+			callback(pos)
+		end
+	end)
 end
 
-switchTab("Buat")
-
-local function mkLabel(text, parent, col)
-    local l = Instance.new("TextLabel", parent)
-    l.Size = UDim2.new(1, -16, 0, 22)
-    l.BackgroundTransparency = 1
-    l.Text = text
-    l.TextColor3 = col or Color3.fromRGB(185, 125, 255)
-    l.TextSize = 12
-    l.Font = Enum.Font.GothamBold
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.ZIndex = 12
-    return l
-end
-
-local function mkInput(ph, parent)
-    local b = Instance.new("TextBox", parent)
-    b.Size = UDim2.new(1, -16, 0, 36)
-    b.BackgroundColor3 = Color3.fromRGB(12, 0, 38)
-    b.BorderSizePixel = 0
-    b.PlaceholderText = ph
-    b.PlaceholderColor3 = Color3.fromRGB(95, 55, 155)
-    b.Text = ""
-    b.TextColor3 = Color3.fromRGB(225, 195, 255)
-    b.TextSize = 12
-    b.Font = Enum.Font.Gotham
-    b.ClearTextOnFocus = false
-    b.ZIndex = 12
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
-    local s = Instance.new("UIStroke", b)
-    s.Color = Color3.fromRGB(65, 0, 135)
-    s.Thickness = 1.5
-    local p = Instance.new("UIPadding", b)
-    p.PaddingLeft = UDim.new(0, 10)
-    b.Focused:Connect(function() s.Color = Color3.fromRGB(155, 45, 255) end)
-    b.FocusLost:Connect(function() s.Color = Color3.fromRGB(65, 0, 135) end)
-    return b
-end
-
-local function mkDivider(parent)
-    local d = Instance.new("Frame", parent)
-    d.Size = UDim2.new(1, -16, 0, 1)
-    d.BackgroundColor3 = Color3.fromRGB(65, 0, 135)
-    d.BackgroundTransparency = 0.4
-    d.BorderSizePixel = 0
-    d.ZIndex = 12
-    return d
-end
-
-local function mkSlider(label, min, max, default, parent)
-    local cont = Instance.new("Frame", parent)
-    cont.Size = UDim2.new(1, -16, 0, 58)
-    cont.BackgroundTransparency = 1
-    cont.ZIndex = 12
-
-    local lbl = Instance.new("TextLabel", cont)
-    lbl.Size = UDim2.new(1, 0, 0, 20)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = label .. ": " .. tostring(default)
-    lbl.TextColor3 = Color3.fromRGB(195, 150, 255)
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 12
-
-    local track = Instance.new("Frame", cont)
-    track.Size = UDim2.new(1, 0, 0, 14)
-    track.Position = UDim2.new(0, 0, 0, 26)
-    track.BackgroundColor3 = Color3.fromRGB(18, 0, 50)
-    track.BorderSizePixel = 0
-    track.ZIndex = 12
-    Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
-
-    local pct = (default - min) / (max - min)
-
-    local fill = Instance.new("Frame", track)
-    fill.Size = UDim2.new(pct, 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(125, 35, 225)
-    fill.BorderSizePixel = 0
-    fill.ZIndex = 13
-    Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-    local fg = Instance.new("UIGradient", fill)
-    fg.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(190, 90, 255)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(95, 15, 195))
-    })
-
-    local knob = Instance.new("Frame", track)
-    knob.Size = UDim2.new(0, 22, 0, 22)
-    knob.Position = UDim2.new(pct, -11, 0.5, -11)
-    knob.BackgroundColor3 = Color3.fromRGB(200, 100, 255)
-    knob.BorderSizePixel = 0
-    knob.ZIndex = 14
-    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
-    local kg = Instance.new("UIGradient", knob)
-    kg.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 160, 255)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(145, 25, 215))
-    })
-    kg.Rotation = 135
-
-    local val = default
-    local sliding = false
-
-    knob.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            sliding = true
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            sliding = false
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(i)
-        if sliding and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-            local ap = track.AbsolutePosition
-            local as = track.AbsoluteSize
-            local rx = math.clamp((i.Position.X - ap.X) / as.X, 0, 1)
-            val = math.round(min + (max - min) * rx)
-            fill.Size = UDim2.new(rx, 0, 1, 0)
-            knob.Position = UDim2.new(rx, -11, 0.5, -11)
-            lbl.Text = label .. ": " .. tostring(val)
-        end
-    end)
-    track.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-            local ap = track.AbsolutePosition
-            local as = track.AbsoluteSize
-            local rx = math.clamp((i.Position.X - ap.X) / as.X, 0, 1)
-            val = math.round(min + (max - min) * rx)
-            fill.Size = UDim2.new(rx, 0, 1, 0)
-            knob.Position = UDim2.new(rx, -11, 0.5, -11)
-            lbl.Text = label .. ": " .. tostring(val)
-            sliding = true
-        end
-    end)
-
-    return {
-        get = function() return val end,
-        set = function(v)
-            val = math.clamp(v, min, max)
-            local rx = (val - min) / (max - min)
-            fill.Size = UDim2.new(rx, 0, 1, 0)
-            knob.Position = UDim2.new(rx, -11, 0.5, -11)
-            lbl.Text = label .. ": " .. tostring(val)
-        end
-    }
-end
-
-local function mkToggle(label, default, parent)
-    local cont = Instance.new("Frame", parent)
-    cont.Size = UDim2.new(1, -16, 0, 34)
-    cont.BackgroundColor3 = Color3.fromRGB(10, 0, 32)
-    cont.BorderSizePixel = 0
-    cont.ZIndex = 12
-    Instance.new("UICorner", cont).CornerRadius = UDim.new(0, 9)
-
-    local lbl = Instance.new("TextLabel", cont)
-    lbl.Size = UDim2.new(0.72, 0, 1, 0)
-    lbl.Position = UDim2.new(0, 10, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = label
-    lbl.TextColor3 = Color3.fromRGB(195, 150, 255)
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 13
-
-    local tog = Instance.new("TextButton", cont)
-    tog.Size = UDim2.new(0, 54, 0, 26)
-    tog.Position = UDim2.new(1, -62, 0.5, -13)
-    tog.BorderSizePixel = 0
-    tog.Text = default and "ON" or "OFF"
-    tog.TextColor3 = Color3.fromRGB(255,255,255)
-    tog.TextSize = 10
-    tog.Font = Enum.Font.GothamBold
-    tog.BackgroundColor3 = default and Color3.fromRGB(88, 8, 198) or Color3.fromRGB(48, 48, 72)
-    tog.ZIndex = 13
-    Instance.new("UICorner", tog).CornerRadius = UDim.new(1, 0)
-
-    local state = default
-    tog.MouseButton1Click:Connect(function()
-        state = not state
-        tog.Text = state and "ON" or "OFF"
-        TweenService:Create(tog, TweenInfo.new(0.2), {BackgroundColor3 = state and Color3.fromRGB(88, 8, 198) or Color3.fromRGB(48, 48, 72)}):Play()
-    end)
-
-    return {
-        get = function() return state end,
-        set = function(v)
-            state = v
-            tog.Text = state and "ON" or "OFF"
-            tog.BackgroundColor3 = state and Color3.fromRGB(88, 8, 198) or Color3.fromRGB(48, 48, 72)
-        end
-    }
-end
-
-local function mkButton(text, color, parent)
-    local btn = Instance.new("TextButton", parent)
-    btn.Size = UDim2.new(1, -16, 0, 42)
-    btn.BackgroundColor3 = color
-    btn.BorderSizePixel = 0
-    btn.Text = text
-    btn.TextColor3 = Color3.fromRGB(255,255,255)
-    btn.TextSize = 13
-    btn.Font = Enum.Font.GothamBold
-    btn.ZIndex = 12
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 11)
-    local g = Instance.new("UIGradient", btn)
-    g.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, color:Lerp(Color3.new(1,1,1), 0.22)),
-        ColorSequenceKeypoint.new(1, color)
-    })
-    g.Rotation = 90
-    btn.MouseEnter:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = color:Lerp(Color3.new(1,1,1), 0.2)}):Play()
-    end)
-    btn.MouseLeave:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = color}):Play()
-    end)
-    btn.MouseButton1Click:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundColor3 = color:Lerp(Color3.new(0,0,0), 0.22)}):Play()
-        task.wait(0.12)
-        TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = color}):Play()
-    end)
-    return btn
-end
-
-local function mkColorInput(ph, parent)
-    local b = Instance.new("TextBox", parent)
-    b.BackgroundColor3 = Color3.fromRGB(12, 0, 38)
-    b.BorderSizePixel = 0
-    b.PlaceholderText = ph
-    b.PlaceholderColor3 = Color3.fromRGB(85, 45, 135)
-    b.Text = ""
-    b.TextColor3 = Color3.fromRGB(225, 195, 255)
-    b.TextSize = 11
-    b.Font = Enum.Font.Gotham
-    b.ClearTextOnFocus = false
-    b.ZIndex = 12
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
-    local p = Instance.new("UIPadding", b)
-    p.PaddingLeft = UDim.new(0, 5)
-    return b
-end
-
-local function mkColorRow(label, default, parent)
-    local cont = Instance.new("Frame", parent)
-    cont.Size = UDim2.new(1, -16, 0, 38)
-    cont.BackgroundColor3 = Color3.fromRGB(10, 0, 32)
-    cont.BorderSizePixel = 0
-    cont.ZIndex = 12
-    Instance.new("UICorner", cont).CornerRadius = UDim.new(0, 9)
-
-    local lbl = Instance.new("TextLabel", cont)
-    lbl.Size = UDim2.new(0, 88, 1, 0)
-    lbl.Position = UDim2.new(0, 8, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = label
-    lbl.TextColor3 = Color3.fromRGB(195, 150, 255)
-    lbl.TextSize = 11
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 13
-
-    local preview = Instance.new("Frame", cont)
-    preview.Size = UDim2.new(0, 24, 0, 24)
-    preview.Position = UDim2.new(0, 96, 0.5, -12)
-    preview.BackgroundColor3 = default
-    preview.BorderSizePixel = 0
-    preview.ZIndex = 13
-    Instance.new("UICorner", preview).CornerRadius = UDim.new(0, 5)
-
-    local rB = mkColorInput("R", cont)
-    rB.Size = UDim2.new(0, 50, 0, 28)
-    rB.Position = UDim2.new(0, 126, 0.5, -14)
-    rB.Text = tostring(math.round(default.R * 255))
-
-    local gB = mkColorInput("G", cont)
-    gB.Size = UDim2.new(0, 50, 0, 28)
-    gB.Position = UDim2.new(0, 182, 0.5, -14)
-    gB.Text = tostring(math.round(default.G * 255))
-
-    local bB = mkColorInput("B", cont)
-    bB.Size = UDim2.new(0, 50, 0, 28)
-    bB.Position = UDim2.new(0, 238, 0.5, -14)
-    bB.Text = tostring(math.round(default.B * 255))
-
-    local function upd()
-        local r = math.clamp(tonumber(rB.Text) or 255, 0, 255)/255
-        local g = math.clamp(tonumber(gB.Text) or 255, 0, 255)/255
-        local bv = math.clamp(tonumber(bB.Text) or 255, 0, 255)/255
-        preview.BackgroundColor3 = Color3.new(r, g, bv)
-    end
-    rB.FocusLost:Connect(upd)
-    gB.FocusLost:Connect(upd)
-    bB.FocusLost:Connect(upd)
-
-    return {
-        get = function()
-            local r = math.clamp(tonumber(rB.Text) or 255, 0, 255)/255
-            local g = math.clamp(tonumber(gB.Text) or 255, 0, 255)/255
-            local bv = math.clamp(tonumber(bB.Text) or 255, 0, 255)/255
-            return Color3.new(r, g, bv)
-        end,
-        set = function(c)
-            rB.Text = tostring(math.round(c.R * 255))
-            gB.Text = tostring(math.round(c.G * 255))
-            bB.Text = tostring(math.round(c.B * 255))
-            preview.BackgroundColor3 = c
-        end
-    }
-end
-
-local function mkStatusBar(parent)
-    local bar = Instance.new("Frame", parent)
-    bar.Size = UDim2.new(1, -16, 0, 38)
-    bar.BackgroundColor3 = Color3.fromRGB(8, 0, 28)
-    bar.BorderSizePixel = 0
-    bar.ZIndex = 12
-    Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 10)
-    local s = Instance.new("UIStroke", bar)
-    s.Color = Color3.fromRGB(55, 0, 115)
-    s.Thickness = 1.5
-    local l = Instance.new("TextLabel", bar)
-    l.Size = UDim2.new(1, -12, 1, 0)
-    l.Position = UDim2.new(0, 8, 0, 0)
-    l.BackgroundTransparency = 1
-    l.Text = "✦ Siap membuat tool kamu ✦"
-    l.TextColor3 = Color3.fromRGB(165, 115, 235)
-    l.TextSize = 11
-    l.Font = Enum.Font.GothamBold
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.TextWrapped = true
-    l.ZIndex = 13
-    return l
-end
-
-mkLabel("📝 Nama Tool:", createPage)
-local nameInput = mkInput("Contoh: Pedang Galaksi Ungu...", createPage)
-
-mkLabel("🔧 Tipe / Deskripsi:", createPage)
-local typeInput = mkInput("Sword / Gun / Magic / Bow / Custom...", createPage)
-
-mkDivider(createPage)
-mkLabel("📐 Ukuran Handle:", createPage)
-local sX = mkSlider("Lebar", 1, 20, 3, createPage)
-local sY = mkSlider("Tinggi", 1, 20, 1, createPage)
-local sZ = mkSlider("Panjang", 1, 20, 5, createPage)
-
-mkDivider(createPage)
-mkLabel("🎨 Warna Tool:", createPage)
-local colorPick = mkColorRow("Warna:", Color3.fromRGB(120, 50, 220), createPage)
-
-mkDivider(createPage)
-mkLabel("⚡ Stats Tool:", createPage)
-local dmgSlider = mkSlider("Damage", 0, 9999, 50, createPage)
-local spdSlider = mkSlider("Speed Bonus", 0, 200, 0, createPage)
-local rangeSlider = mkSlider("Range", 1, 1000, 15, createPage)
-local cdSlider = mkSlider("Cooldown (x0.1s)", 0, 100, 5, createPage)
-local durSlider = mkSlider("Durability", 1, 999, 100, createPage)
-
-mkDivider(createPage)
-mkLabel("✨ Efek Visual:", createPage)
-local glowTog = mkToggle("🌟 Glow Neon", false, createPage)
-local trailTog = mkToggle("💫 Trail Effect", false, createPage)
-local sparkleTog = mkToggle("✨ Sparkles", false, createPage)
-local fireTog = mkToggle("🔥 Fire Effect", false, createPage)
-local smokeTog = mkToggle("💨 Smoke Effect", false, createPage)
-local lightTog = mkToggle("💡 Point Light", false, createPage)
-
-mkDivider(createPage)
-mkLabel("🪨 Material Handle:", createPage)
-local matInput = mkInput("SmoothPlastic / Neon / Metal / Wood / Glass...", createPage)
-
-mkLabel("🔊 Sound ID (opsional):", createPage)
-local soundInput = mkInput("Masukkan angka Sound ID...", createPage)
-
-mkLabel("🏷️ Tag / Kategori:", createPage)
-local tagInput = mkInput("Rare / Epic / Legendary / Common...", createPage)
-
-mkDivider(createPage)
-local statusCreate = mkStatusBar(createPage)
-local makeBtn = mkButton("✨ Buat Tool & Masukkan ke Backpack!", Color3.fromRGB(95, 12, 210), createPage)
-
-local function getMat(name)
-    local m = {
-        smoothplastic=Enum.Material.SmoothPlastic, neon=Enum.Material.Neon,
-        metal=Enum.Material.Metal, wood=Enum.Material.Wood,
-        glass=Enum.Material.Glass, plastic=Enum.Material.Plastic,
-        diamond=Enum.Material.DiamondPlate, brick=Enum.Material.Brick,
-        cobblestone=Enum.Material.Cobblestone, slate=Enum.Material.Slate,
-        granite=Enum.Material.Granite, marble=Enum.Material.Marble,
-        fabric=Enum.Material.Fabric, ice=Enum.Material.Ice,
-        sand=Enum.Material.Sand, foil=Enum.Material.Foil,
-        crackedlava=Enum.Material.CrackedLava, corrodedmetal=Enum.Material.CorrodedMetal,
-    }
-    return m[string.lower(name or "")] or Enum.Material.SmoothPlastic
-end
-
-local function forceVisible(tool)
-    local function fix(obj)
-        if obj:IsA("BasePart") or obj:IsA("MeshPart") then
-            obj.Transparency = 0
-            obj.LocalTransparencyModifier = 0
-        end
-    end
-    for _, v in pairs(tool:GetDescendants()) do fix(v) end
-    tool.DescendantAdded:Connect(function(v) task.wait() fix(v) end)
-end
-
-local function applyFx(part, col)
-    if glowTog.get() then part.Material = Enum.Material.Neon end
-    if lightTog.get() then
-        local pl = Instance.new("PointLight", part)
-        pl.Brightness = 4
-        pl.Range = 16
-        pl.Color = col
-    end
-    if trailTog.get() then
-        local a0 = Instance.new("Attachment", part)
-        a0.Position = Vector3.new(0, 0.5, 0)
-        local a1 = Instance.new("Attachment", part)
-        a1.Position = Vector3.new(0, -0.5, 0)
-        local tr = Instance.new("Trail", part)
-        tr.Attachment0 = a0
-        tr.Attachment1 = a1
-        tr.Color = ColorSequence.new(col)
-        tr.Lifetime = 0.6
-        tr.LightEmission = 0.9
-        tr.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0), NumberSequenceKeypoint.new(1,1)})
-    end
-    if sparkleTog.get() then
-        local sp = Instance.new("Sparkles", part)
-        sp.SparkleColor = col
-    end
-    if fireTog.get() then
-        local f = Instance.new("Fire", part)
-        f.Color = col
-        f.SecondaryColor = Color3.fromRGB(255, 80, 0)
-        f.Size = 3
-        f.Heat = 8
-    end
-    if smokeTog.get() then
-        local sm = Instance.new("Smoke", part)
-        sm.Color = col
-        sm.Opacity = 0.3
-        sm.RiseVelocity = 5
-    end
-end
-
-local updateManage
-
-local function buildTool()
-    local tName = nameInput.Text
-    if tName == "" then
-        statusCreate.Text = "⚠️ Nama tool tidak boleh kosong!"
-        statusCreate.TextColor3 = Color3.fromRGB(255, 100, 100)
-        task.spawn(showNotif, "⚠️ Nama tool tidak boleh kosong!", Color3.fromRGB(255, 100, 100))
-        return
-    end
-
-    local col = colorPick.get()
-    local tool = Instance.new("Tool")
-    tool.Name = tName
-    tool.ToolTip = typeInput.Text ~= "" and typeInput.Text or tName
-    tool.RequiresHandle = true
-    tool.CanBeDropped = true
-    tool.GripPos = Vector3.new(0, 0, -1)
-
-    local handle = Instance.new("Part", tool)
-    handle.Name = "Handle"
-    handle.Size = Vector3.new(sX.get(), sY.get(), sZ.get())
-    handle.Color = col
-    handle.BrickColor = BrickColor.new(col)
-    handle.Material = getMat(matInput.Text)
-    handle.Transparency = 0
-    handle.CastShadow = true
-
-    applyFx(handle, col)
-
-    if soundInput.Text ~= "" and tonumber(soundInput.Text) then
-        local snd = Instance.new("Sound", handle)
-        snd.Name = "EquipSound"
-        snd.SoundId = "rbxassetid://" .. soundInput.Text
-        snd.Volume = 1
-    end
-
-    local cfg = Instance.new("Configuration", tool)
-    cfg.Name = "ToolData"
-    local vals = {
-        {n="ToolName", v=tName, t="StringValue"},
-        {n="ToolType", v=typeInput.Text, t="StringValue"},
-        {n="Tag", v=tagInput.Text, t="StringValue"},
-        {n="Damage", v=dmgSlider.get(), t="NumberValue"},
-        {n="SpeedBonus", v=spdSlider.get(), t="NumberValue"},
-        {n="Range", v=rangeSlider.get(), t="NumberValue"},
-        {n="Cooldown", v=cdSlider.get()/10, t="NumberValue"},
-        {n="Durability", v=durSlider.get(), t="NumberValue"},
-        {n="CreatedAt", v=os.time(), t="NumberValue"},
-        {n="ColorR", v=col.R, t="NumberValue"},
-        {n="ColorG", v=col.G, t="NumberValue"},
-        {n="ColorB", v=col.B, t="NumberValue"},
-    }
-    for _, vd in pairs(vals) do
-        local sv = Instance.new(vd.t, cfg)
-        sv.Name = vd.n
-        sv.Value = vd.v
-    end
-
-    local ls = Instance.new("LocalScript", tool)
-    ls.Name = "ToolController"
-    ls.Source = string.format([[
-local tool = script.Parent
-local RunService = game:GetService("RunService")
-local isEquipped = false
-local lastUsed = 0
-local cd = %f
-
-local function keepVis()
-    for _, v in pairs(tool:GetDescendants()) do
-        if v:IsA("BasePart") then
-            v.Transparency = 0
-            v.LocalTransparencyModifier = 0
-        end
-    end
-end
-
-RunService.Heartbeat:Connect(keepVis)
-
-tool.Equipped:Connect(function()
-    isEquipped = true
-    keepVis()
-    local s = tool:FindFirstChild("Handle") and tool.Handle:FindFirstChild("EquipSound")
-    if s then s:Play() end
+createButton("FrozenSpikes", "FrozenSpikes", function()
+	local args = {
+		"Beserk",
+		"FrozenSpikes",
+		Vector3.new(-1470.6932373046875, 18.751598358154297, -79.37462615966797)
+	}
+	fireSkillEvent(args)
 end)
 
-tool.Unequipped:Connect(function()
-    isEquipped = false
+createButton("IceBurst", "IceBurst", function()
+	local args = {
+		"Beserk",
+		"IceBurst",
+		Vector3.new(-1462.354736328125, 25.983293533325195, -31.684843063354492)
+	}
+	fireSkillEvent(args)
 end)
 
-tool.Activated:Connect(function()
-    if not isEquipped then return end
-    local now = tick()
-    if now - lastUsed < cd then return end
-    lastUsed = now
-    keepVis()
+createButton("IceSword", "IceSword [TAP]", function()
+	task.spawn(function()
+		selectTargetPosition(function(pos)
+			local args = {
+				"Beserk",
+				"IceSword",
+				pos
+			}
+			fireSkillEvent(args)
+		end)
+	end)
 end)
 
-tool.DescendantAdded:Connect(function(v)
-    task.wait()
-    if v:IsA("BasePart") then
-        v.Transparency = 0
-        v.LocalTransparencyModifier = 0
-    end
-end)
-]], cdSlider.get()/10)
+local hakuBtn
+hakuBtn = createButton("Haku", "Haku [LOOP:OFF]", function()
+	if not hakuLoopRunning then
+		hakuLoopRunning = true
+		hakuBtn.Text = "Haku [LOOP:ON]"
+		hakuBtn.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
 
-    tool.Parent = LocalPlayer.Backpack
-    forceVisible(tool)
-
-    local entry = {
-        name = tName,
-        tool = tool,
-        type = typeInput.Text,
-        tag = tagInput.Text,
-        damage = dmgSlider.get(),
-        speed = spdSlider.get(),
-        range = rangeSlider.get(),
-        cooldown = cdSlider.get()/10,
-        durability = durSlider.get(),
-        color = col,
-        material = matInput.Text,
-        created = os.time(),
-        glow = glowTog.get(),
-        trail = trailTog.get(),
-        sparkle = sparkleTog.get(),
-        fire = fireTog.get(),
-        smoke = smokeTog.get(),
-        light = lightTog.get(),
-    }
-    table.insert(toolsList, entry)
-    ToolCountBadge.Text = tostring(#toolsList)
-
-    statusCreate.Text = "✅ '" .. tName .. "' berhasil dibuat & ada di backpack!"
-    statusCreate.TextColor3 = Color3.fromRGB(140, 255, 165)
-    task.spawn(showNotif, "✅ Tool '" .. tName .. "' dibuat!", Color3.fromRGB(140, 255, 165))
-
-    nameInput.Text = ""
-    switchTab("Kelola")
-    updateManage()
-end
-
-makeBtn.MouseButton1Click:Connect(buildTool)
-
-local editNameInput, editTypeInput, editTagInput, editMatInput
-local editSX, editSY, editSZ
-local editDmg, editSpd, editRange, editCd, editDur
-local editColor
-local editGlow, editTrail, editSparkle, editFire, editSmoke, editLight
-local editStatus
-local currentEditIdx = nil
-
-mkLabel("✏️ Edit Tool (pilih dari Kelola):", editPage)
-
-local noSelectLbl = Instance.new("TextLabel", editPage)
-noSelectLbl.Size = UDim2.new(1, -16, 0, 48)
-noSelectLbl.BackgroundColor3 = Color3.fromRGB(10, 0, 32)
-noSelectLbl.BorderSizePixel = 0
-noSelectLbl.Text = "Pilih tool di tab 📋 Kelola\nlalu tekan tombol Edit ✏️"
-noSelectLbl.TextColor3 = Color3.fromRGB(140, 90, 200)
-noSelectLbl.TextSize = 12
-noSelectLbl.Font = Enum.Font.Gotham
-noSelectLbl.TextWrapped = true
-noSelectLbl.ZIndex = 12
-Instance.new("UICorner", noSelectLbl).CornerRadius = UDim.new(0, 9)
-
-mkLabel("📝 Nama:", editPage)
-editNameInput = mkInput("Nama tool...", editPage)
-
-mkLabel("🔧 Tipe:", editPage)
-editTypeInput = mkInput("Tipe tool...", editPage)
-
-mkLabel("🏷️ Tag:", editPage)
-editTagInput = mkInput("Tag...", editPage)
-
-mkDivider(editPage)
-mkLabel("📐 Ukuran:", editPage)
-editSX = mkSlider("Lebar", 1, 20, 3, editPage)
-editSY = mkSlider("Tinggi", 1, 20, 1, editPage)
-editSZ = mkSlider("Panjang", 1, 20, 5, editPage)
-
-mkDivider(editPage)
-mkLabel("🎨 Warna:", editPage)
-editColor = mkColorRow("Warna:", Color3.fromRGB(120, 50, 220), editPage)
-
-mkDivider(editPage)
-mkLabel("⚡ Stats:", editPage)
-editDmg = mkSlider("Damage", 0, 9999, 50, editPage)
-editSpd = mkSlider("Speed Bonus", 0, 200, 0, editPage)
-editRange = mkSlider("Range", 1, 1000, 15, editPage)
-editCd = mkSlider("Cooldown (x0.1s)", 0, 100, 5, editPage)
-editDur = mkSlider("Durability", 1, 999, 100, editPage)
-
-mkDivider(editPage)
-mkLabel("✨ Efek:", editPage)
-editGlow = mkToggle("🌟 Glow Neon", false, editPage)
-editTrail = mkToggle("💫 Trail Effect", false, editPage)
-editSparkle = mkToggle("✨ Sparkles", false, editPage)
-editFire = mkToggle("🔥 Fire", false, editPage)
-editSmoke = mkToggle("💨 Smoke", false, editPage)
-editLight = mkToggle("💡 Point Light", false, editPage)
-
-mkLabel("🪨 Material:", editPage)
-editMatInput = mkInput("Material...", editPage)
-
-mkDivider(editPage)
-editStatus = mkStatusBar(editPage)
-local applyEditBtn = mkButton("✅ Apply Perubahan", Color3.fromRGB(0, 110, 55), editPage)
-local resetEditBtn = mkButton("🔄 Reset ke Default", Color3.fromRGB(80, 40, 0), editPage)
-
-applyEditBtn.MouseButton1Click:Connect(function()
-    if not currentEditIdx or not toolsList[currentEditIdx] then
-        editStatus.Text = "⚠️ Tidak ada tool yang dipilih!"
-        editStatus.TextColor3 = Color3.fromRGB(255, 100, 100)
-        return
-    end
-
-    local entry = toolsList[currentEditIdx]
-    local oldTool = entry.tool
-
-    if oldTool and oldTool.Parent then
-        oldTool:Destroy()
-    end
-
-    local newName = editNameInput.Text ~= "" and editNameInput.Text or entry.name
-    local col = editColor.get()
-
-    local tool = Instance.new("Tool")
-    tool.Name = newName
-    tool.ToolTip = editTypeInput.Text ~= "" and editTypeInput.Text or newName
-    tool.RequiresHandle = true
-    tool.CanBeDropped = true
-    tool.GripPos = Vector3.new(0, 0, -1)
-
-    local handle = Instance.new("Part", tool)
-    handle.Name = "Handle"
-    handle.Size = Vector3.new(editSX.get(), editSY.get(), editSZ.get())
-    handle.Color = col
-    handle.BrickColor = BrickColor.new(col)
-    handle.Material = getMat(editMatInput.Text)
-    handle.Transparency = 0
-
-    local savedGlow = editGlow.get()
-    local savedTrail = editTrail.get()
-    local savedSparkle = editSparkle.get()
-    local savedFire = editFire.get()
-    local savedSmoke = editSmoke.get()
-    local savedLight = editLight.get()
-
-    if savedGlow then handle.Material = Enum.Material.Neon end
-    if savedLight then
-        local pl = Instance.new("PointLight", handle)
-        pl.Brightness = 4
-        pl.Range = 16
-        pl.Color = col
-    end
-    if savedTrail then
-        local a0 = Instance.new("Attachment", handle)
-        a0.Position = Vector3.new(0, 0.5, 0)
-        local a1 = Instance.new("Attachment", handle)
-        a1.Position = Vector3.new(0, -0.5, 0)
-        local tr = Instance.new("Trail", handle)
-        tr.Attachment0 = a0
-        tr.Attachment1 = a1
-        tr.Color = ColorSequence.new(col)
-        tr.Lifetime = 0.6
-        tr.LightEmission = 0.9
-    end
-    if savedSparkle then
-        local sp = Instance.new("Sparkles", handle)
-        sp.SparkleColor = col
-    end
-    if savedFire then
-        local f = Instance.new("Fire", handle)
-        f.Color = col
-        f.SecondaryColor = Color3.fromRGB(255, 80, 0)
-    end
-    if savedSmoke then
-        local sm = Instance.new("Smoke", handle)
-        sm.Color = col
-        sm.Opacity = 0.3
-    end
-
-    local ls = Instance.new("LocalScript", tool)
-    ls.Name = "ToolController"
-    ls.Source = string.format([[
-local tool = script.Parent
-local RunService = game:GetService("RunService")
-local isEquipped = false
-local lastUsed = 0
-local cd = %f
-
-local function keepVis()
-    for _, v in pairs(tool:GetDescendants()) do
-        if v:IsA("BasePart") then
-            v.Transparency = 0
-            v.LocalTransparencyModifier = 0
-        end
-    end
-end
-
-RunService.Heartbeat:Connect(keepVis)
-
-tool.Equipped:Connect(function()
-    isEquipped = true
-    keepVis()
+		hakuLoopThread = task.spawn(function()
+			while hakuLoopRunning do
+				local args = {
+					"Beserk",
+					"Haku",
+					Vector3.new(-1473.510986328125, 22.850122451782227, -22.477205276489258)
+				}
+				fireSkillEvent(args)
+				task.wait(10)
+			end
+		end)
+	else
+		hakuLoopRunning = false
+		if hakuLoopThread then
+			task.cancel(hakuLoopThread)
+			hakuLoopThread = nil
+		end
+		hakuBtn.Text = "Haku [LOOP:Off]"
+		hakuBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	end
 end)
 
-tool.Unequipped:Connect(function()
-    isEquipped = false
+createButton("CursedStop", "CursedStop", function()
+	local args = {
+		"Gojo",
+		"CursedStop"
+	}
+	fireSkillEvent(args)
 end)
 
-tool.Activated:Connect(function()
-    if not isEquipped then return end
-    local now = tick()
-    if now - lastUsed < cd then return end
-    lastUsed = now
-    keepVis()
+createButton("ShadowSummon", "ShadowSummon", function()
+	local args = {
+		"AntMorphS",
+		"ShadowSummon",
+		"AntMorphS"
+	}
+	fireSkillEvent(args)
 end)
 
-tool.DescendantAdded:Connect(function(v)
-    task.wait()
-    if v:IsA("BasePart") then
-        v.Transparency = 0
-        v.LocalTransparencyModifier = 0
-    end
-end)
-]], editCd.get()/10)
-
-    tool.Parent = LocalPlayer.Backpack
-    forceVisible(tool)
-
-    entry.name = newName
-    entry.tool = tool
-    entry.type = editTypeInput.Text
-    entry.tag = editTagInput.Text
-    entry.damage = editDmg.get()
-    entry.speed = editSpd.get()
-    entry.range = editRange.get()
-    entry.cooldown = editCd.get()/10
-    entry.durability = editDur.get()
-    entry.color = col
-    entry.material = editMatInput.Text
-    entry.glow = savedGlow
-    entry.trail = savedTrail
-    entry.sparkle = savedSparkle
-    entry.fire = savedFire
-    entry.smoke = savedSmoke
-    entry.light = savedLight
-
-    editStatus.Text = "✅ Tool '" .. newName .. "' berhasil diupdate!"
-    editStatus.TextColor3 = Color3.fromRGB(140, 255, 165)
-    task.spawn(showNotif, "✅ Tool diupdate!", Color3.fromRGB(140, 255, 165))
-    updateManage()
+createButton("GojoDomain", "GojoDomain", function()
+	local args = {
+		{
+			Key = "GojoDomain",
+			Function = "Active"
+		}
+	}
+	fireServerRemote(args)
 end)
 
-resetEditBtn.MouseButton1Click:Connect(function()
-    if not currentEditIdx or not toolsList[currentEditIdx] then return end
-    local e = toolsList[currentEditIdx]
-    editNameInput.Text = e.name
-    editTypeInput.Text = e.type
-    editTagInput.Text = e.tag or ""
-    editMatInput.Text = e.material or ""
-    editSX.set(3) editSY.set(1) editSZ.set(5)
-    editDmg.set(50) editSpd.set(0) editRange.set(15) editCd.set(5) editDur.set(100)
-    editColor.set(Color3.fromRGB(120, 50, 220))
-    editGlow.set(false) editTrail.set(false) editSparkle.set(false)
-    editFire.set(false) editSmoke.set(false) editLight.set(false)
-    editStatus.Text = "🔄 Reset ke default."
-    editStatus.TextColor3 = Color3.fromRGB(255, 200, 100)
+createButton("ShadowNuke", "ShadowNuke", function()
+	local args = {
+		"Beserk",
+		"ShadowNuke",
+		Vector3.new(-1478.84765625, 28.010448455810547, -39.178565979003906)
+	}
+	fireSkillEvent(args)
 end)
 
-local function loadToEdit(idx)
-    currentEditIdx = idx
-    local e = toolsList[idx]
-    noSelectLbl.Text = "✏️ Mengedit: " .. e.name
-    editNameInput.Text = e.name
-    editTypeInput.Text = e.type or ""
-    editTagInput.Text = e.tag or ""
-    editMatInput.Text = e.material or ""
-    editSX.set(e.tool and e.tool:FindFirstChild("Handle") and e.tool.Handle.Size.X or 3)
-    editSY.set(e.tool and e.tool:FindFirstChild("Handle") and e.tool.Handle.Size.Y or 1)
-    editSZ.set(e.tool and e.tool:FindFirstChild("Handle") and e.tool.Handle.Size.Z or 5)
-    editDmg.set(e.damage or 50)
-    editSpd.set(e.speed or 0)
-    editRange.set(e.range or 15)
-    editCd.set(math.round((e.cooldown or 0.5) * 10))
-    editDur.set(e.durability or 100)
-    editColor.set(e.color or Color3.fromRGB(120, 50, 220))
-    editGlow.set(e.glow or false)
-    editTrail.set(e.trail or false)
-    editSparkle.set(e.sparkle or false)
-    editFire.set(e.fire or false)
-    editSmoke.set(e.smoke or false)
-    editLight.set(e.light or false)
-    editStatus.Text = "📋 Data '" .. e.name .. "' dimuat. Silakan edit!"
-    editStatus.TextColor3 = Color3.fromRGB(180, 140, 255)
-    switchTab("Edit")
-end
-
-function updateManage()
-    for _, c in pairs(managePage:GetChildren()) do
-        if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end
-    end
-
-    mkLabel("📋 Tools Kamu (" .. #toolsList .. " tools):", managePage)
-    ToolCountBadge.Text = tostring(#toolsList)
-
-    if #toolsList == 0 then
-        local el = Instance.new("TextLabel", managePage)
-        el.Size = UDim2.new(1, -16, 0, 55)
-        el.BackgroundColor3 = Color3.fromRGB(10, 0, 32)
-        el.BorderSizePixel = 0
-        el.Text = "Belum ada tool.\nBuat tool di tab '✨ Buat'"
-        el.TextColor3 = Color3.fromRGB(140, 90, 200)
-        el.TextSize = 12
-        el.Font = Enum.Font.Gotham
-        el.TextWrapped = true
-        el.ZIndex = 12
-        Instance.new("UICorner", el).CornerRadius = UDim.new(0, 9)
-        return
-    end
-
-    for i, td in pairs(toolsList) do
-        local card = Instance.new("Frame", managePage)
-        card.Size = UDim2.new(1, -16, 0, 92)
-        card.BackgroundColor3 = Color3.fromRGB(12, 0, 38)
-        card.BorderSizePixel = 0
-        card.ZIndex = 12
-        Instance.new("UICorner", card).CornerRadius = UDim.new(0, 11)
-        local cs = Instance.new("UIStroke", card)
-        cs.Color = Color3.fromRGB(65, 0, 135)
-        cs.Thickness = 1
-
-        local colorBar = Instance.new("Frame", card)
-        colorBar.Size = UDim2.new(0, 5, 1, 0)
-        colorBar.BackgroundColor3 = td.color or Color3.fromRGB(120, 50, 220)
-        colorBar.BorderSizePixel = 0
-        colorBar.ZIndex = 13
-        Instance.new("UICorner", colorBar).CornerRadius = UDim.new(0, 5)
-
-        local nameL = Instance.new("TextLabel", card)
-        nameL.Size = UDim2.new(0.62, 0, 0, 24)
-        nameL.Position = UDim2.new(0, 16, 0, 5)
-        nameL.BackgroundTransparency = 1
-        nameL.Text = "🛠️ " .. td.name
-        nameL.TextColor3 = Color3.fromRGB(220, 175, 255)
-        nameL.TextSize = 13
-        nameL.Font = Enum.Font.GothamBold
-        nameL.TextXAlignment = Enum.TextXAlignment.Left
-        nameL.TextTruncate = Enum.TextTruncate.AtEnd
-        nameL.ZIndex = 13
-
-        local tagL = Instance.new("TextLabel", card)
-        tagL.Size = UDim2.new(0.62, 0, 0, 16)
-        tagL.Position = UDim2.new(0, 16, 0, 29)
-        tagL.BackgroundTransparency = 1
-        tagL.Text = (td.tag ~= "" and td.tag or "Common") .. " · " .. (td.type ~= "" and td.type or "Custom") .. " · DMG:" .. td.damage
-        tagL.TextColor3 = Color3.fromRGB(145, 95, 210)
-        tagL.TextSize = 10
-        tagL.Font = Enum.Font.Gotham
-        tagL.TextXAlignment = Enum.TextXAlignment.Left
-        tagL.TextTruncate = Enum.TextTruncate.AtEnd
-        tagL.ZIndex = 13
-
-        local inBag = td.tool and (td.tool.Parent == LocalPlayer.Backpack or td.tool.Parent == (LocalPlayer.Character))
-        local statusL = Instance.new("TextLabel", card)
-        statusL.Size = UDim2.new(0.62, 0, 0, 14)
-        statusL.Position = UDim2.new(0, 16, 0, 46)
-        statusL.BackgroundTransparency = 1
-        statusL.Text = inBag and "✅ Di Backpack" or "❌ Tidak di Backpack"
-        statusL.TextColor3 = inBag and Color3.fromRGB(100, 255, 150) or Color3.fromRGB(255, 100, 100)
-        statusL.TextSize = 10
-        statusL.Font = Enum.Font.Gotham
-        statusL.TextXAlignment = Enum.TextXAlignment.Left
-        statusL.ZIndex = 13
-
-        local fxStr = {}
-        if td.glow then table.insert(fxStr, "Glow") end
-        if td.trail then table.insert(fxStr, "Trail") end
-        if td.sparkle then table.insert(fxStr, "Sparkle") end
-        if td.fire then table.insert(fxStr, "Fire") end
-        if td.smoke then table.insert(fxStr, "Smoke") end
-        if td.light then table.insert(fxStr, "Light") end
-
-        local fxL = Instance.new("TextLabel", card)
-        fxL.Size = UDim2.new(0.62, 0, 0, 14)
-        fxL.Position = UDim2.new(0, 16, 0, 62)
-        fxL.BackgroundTransparency = 1
-        fxL.Text = #fxStr > 0 and "FX: " .. table.concat(fxStr, ", ") or "FX: None"
-        fxL.TextColor3 = Color3.fromRGB(130, 80, 200)
-        fxL.TextSize = 9
-        fxL.Font = Enum.Font.Gotham
-        fxL.TextXAlignment = Enum.TextXAlignment.Left
-        fxL.TextTruncate = Enum.TextTruncate.AtEnd
-        fxL.ZIndex = 13
-
-        local editBtn = Instance.new("TextButton", card)
-        editBtn.Size = UDim2.new(0, 60, 0, 25)
-        editBtn.Position = UDim2.new(1, -68, 0, 6)
-        editBtn.BackgroundColor3 = Color3.fromRGB(60, 0, 150)
-        editBtn.BorderSizePixel = 0
-        editBtn.Text = "✏️ Edit"
-        editBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        editBtn.TextSize = 10
-        editBtn.Font = Enum.Font.GothamBold
-        editBtn.ZIndex = 14
-        Instance.new("UICorner", editBtn).CornerRadius = UDim.new(0, 7)
-
-        local reBtn = Instance.new("TextButton", card)
-        reBtn.Size = UDim2.new(0, 60, 0, 25)
-        reBtn.Position = UDim2.new(1, -68, 0, 35)
-        reBtn.BackgroundColor3 = Color3.fromRGB(15, 75, 190)
-        reBtn.BorderSizePixel = 0
-        reBtn.Text = "♻️ Re-add"
-        reBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        reBtn.TextSize = 9
-        reBtn.Font = Enum.Font.GothamBold
-        reBtn.ZIndex = 14
-        Instance.new("UICorner", reBtn).CornerRadius = UDim.new(0, 7)
-
-        local delBtn = Instance.new("TextButton", card)
-        delBtn.Size = UDim2.new(0, 60, 0, 25)
-        delBtn.Position = UDim2.new(1, -68, 0, 64)
-        delBtn.BackgroundColor3 = Color3.fromRGB(165, 10, 48)
-        delBtn.BorderSizePixel = 0
-        delBtn.Text = "🗑️ Hapus"
-        delBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        delBtn.TextSize = 9
-        delBtn.Font = Enum.Font.GothamBold
-        delBtn.ZIndex = 14
-        Instance.new("UICorner", delBtn).CornerRadius = UDim.new(0, 7)
-
-        local idx = i
-        editBtn.MouseButton1Click:Connect(function()
-            loadToEdit(idx)
-        end)
-        reBtn.MouseButton1Click:Connect(function()
-            if toolsList[idx] and toolsList[idx].tool then
-                if toolsList[idx].tool.Parent ~= LocalPlayer.Backpack then
-                    toolsList[idx].tool.Parent = LocalPlayer.Backpack
-                end
-                forceVisible(toolsList[idx].tool)
-                task.spawn(showNotif, "♻️ '" .. toolsList[idx].name .. "' ditambah kembali!", Color3.fromRGB(100, 200, 255))
-                updateManage()
-            end
-        end)
-        delBtn.MouseButton1Click:Connect(function()
-            if toolsList[idx] and toolsList[idx].tool then
-                local n = toolsList[idx].name
-                toolsList[idx].tool:Destroy()
-                table.remove(toolsList, idx)
-                if currentEditIdx == idx then currentEditIdx = nil end
-                task.spawn(showNotif, "🗑️ '" .. n .. "' dihapus!", Color3.fromRGB(255, 120, 120))
-                updateManage()
-            end
-        end)
-    end
-
-    mkDivider(managePage)
-    local delAllBtn = mkButton("🗑️ Hapus Semua Tools", Color3.fromRGB(140, 10, 40), managePage)
-    delAllBtn.MouseButton1Click:Connect(function()
-        for _, td in pairs(toolsList) do
-            if td.tool and td.tool.Parent then td.tool:Destroy() end
-        end
-        toolsList = {}
-        currentEditIdx = nil
-        task.spawn(showNotif, "🗑️ Semua tool dihapus!", Color3.fromRGB(255, 120, 120))
-        updateManage()
-    end)
-
-    local reAddAllBtn = mkButton("♻️ Re-add Semua ke Backpack", Color3.fromRGB(15, 75, 190), managePage)
-    reAddAllBtn.MouseButton1Click:Connect(function()
-        for _, td in pairs(toolsList) do
-            if td.tool then
-                td.tool.Parent = LocalPlayer.Backpack
-                forceVisible(td.tool)
-            end
-        end
-        task.spawn(showNotif, "♻️ Semua tool ditambah kembali!", Color3.fromRGB(100, 200, 255))
-        updateManage()
-    end)
-end
-
-mkLabel("⚙️ Pengaturan:", settingsPage)
-local autoReaddTog = mkToggle("🔄 Auto Re-add Saat Spawn", true, settingsPage)
-local forceVisTog = mkToggle("👁️ Force Always Visible", true, settingsPage)
-local guiScaleTog = mkToggle("📱 Mode HP (Ukuran Lebih Besar)", false, settingsPage)
-
-mkDivider(settingsPage)
-mkLabel("🎨 Warna Toggle Button:", settingsPage)
-local btnColorPick = mkColorRow("Warna:", Color3.fromRGB(160, 50, 255), settingsPage)
-local applyBtnColorBtn = mkButton("✅ Apply Warna Button", Color3.fromRGB(55, 0, 130), settingsPage)
-applyBtnColorBtn.MouseButton1Click:Connect(function()
-    local c = btnColorPick.get()
-    tStroke.Color = c
-    tGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, c:Lerp(Color3.new(1,1,1), 0.3)),
-        ColorSequenceKeypoint.new(1, c:Lerp(Color3.new(0,0,0), 0.3))
-    })
-    task.spawn(showNotif, "🎨 Warna button diubah!", Color3.fromRGB(210, 160, 255))
+toggleButton.MouseButton1Click:Connect(function()
+	isVisible = not isVisible
+	buttonContainer.Visible = isVisible
+	toggleButton.Text = isVisible and "HIDE" or "SHOW"
+	toggleButton.BackgroundColor3 = isVisible and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(20, 80, 20)
 end)
 
-mkDivider(settingsPage)
-mkLabel("📊 Statistik:", settingsPage)
-
-local statsFrame = Instance.new("Frame", settingsPage)
-statsFrame.Size = UDim2.new(1, -16, 0, 70)
-statsFrame.BackgroundColor3 = Color3.fromRGB(10, 0, 32)
-statsFrame.BorderSizePixel = 0
-statsFrame.ZIndex = 12
-Instance.new("UICorner", statsFrame).CornerRadius = UDim.new(0, 10)
-
-local statsLabel = Instance.new("TextLabel", statsFrame)
-statsLabel.Size = UDim2.new(1, -12, 1, 0)
-statsLabel.Position = UDim2.new(0, 8, 0, 0)
-statsLabel.BackgroundTransparency = 1
-statsLabel.Text = "Total Tools: 0\nTools di Backpack: 0"
-statsLabel.TextColor3 = Color3.fromRGB(175, 125, 240)
-statsLabel.TextSize = 12
-statsLabel.Font = Enum.Font.Gotham
-statsLabel.TextWrapped = true
-statsLabel.TextXAlignment = Enum.TextXAlignment.Left
-statsLabel.ZIndex = 13
-
-mkDivider(settingsPage)
-local infoFrame = Instance.new("Frame", settingsPage)
-infoFrame.Size = UDim2.new(1, -16, 0, 90)
-infoFrame.BackgroundColor3 = Color3.fromRGB(10, 0, 32)
-infoFrame.BorderSizePixel = 0
-infoFrame.ZIndex = 12
-Instance.new("UICorner", infoFrame).CornerRadius = UDim.new(0, 10)
-
-local infoLabel = Instance.new("TextLabel", infoFrame)
-infoLabel.Size = UDim2.new(1, -12, 1, 0)
-infoLabel.Position = UDim2.new(0, 8, 0, 0)
-infoLabel.BackgroundTransparency = 1
-infoLabel.Text = "🌌 Tools Creator v1.0\nGalaxy Edition\n• Multi-tab Interface\n• Edit Tool Langsung\n• Force Visible Permanen\n• Auto Backpack"
-infoLabel.TextColor3 = Color3.fromRGB(155, 105, 215)
-infoLabel.TextSize = 11
-infoLabel.Font = Enum.Font.Gotham
-infoLabel.TextWrapped = true
-infoLabel.TextXAlignment = Enum.TextXAlignment.Left
-infoLabel.ZIndex = 13
-
-guiScaleTog.get = function()
-    return guiScaleTog.get and false or false
-end
-
-local isMinimized = false
-local fullH = 580
-
-MinBtn.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
-    if isMinimized then
-        TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {Size = UDim2.new(0, 420, 0, 52)}):Play()
-        MinBtn.Text = "▢"
-    else
-        TweenService:Create(MainFrame, TweenInfo.new(0.28, Enum.EasingStyle.Back), {Size = UDim2.new(0, 420, 0, fullH)}):Play()
-        MinBtn.Text = "─"
-    end
-end)
-
-CloseBtn.MouseButton1Click:Connect(function()
-    guiVisible = false
-    TweenService:Create(MainFrame, TweenInfo.new(0.22), {Size = UDim2.new(0, 420, 0, 0)}):Play()
-    task.wait(0.25)
-    MainFrame.Visible = false
-    MainFrame.Size = UDim2.new(0, 420, 0, fullH)
-end)
-
-ToggleBtn.MouseButton1Click:Connect(function()
-    guiVisible = not guiVisible
-    if guiVisible then
-        MainFrame.Visible = true
-        MainFrame.Size = UDim2.new(0, 420, 0, 0)
-        TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Size = UDim2.new(0, 420, 0, fullH)}):Play()
-    else
-        TweenService:Create(MainFrame, TweenInfo.new(0.22), {Size = UDim2.new(0, 420, 0, 0)}):Play()
-        task.wait(0.25)
-        MainFrame.Visible = false
-        MainFrame.Size = UDim2.new(0, 420, 0, fullH)
-    end
-end)
-
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1.5)
-    if autoReaddTog.get() then
-        for _, td in pairs(toolsList) do
-            if td.tool then
-                td.tool.Parent = LocalPlayer.Backpack
-                forceVisible(td.tool)
-            end
-        end
-        if #toolsList > 0 then
-            task.spawn(showNotif, "🔄 " .. #toolsList .. " tool dikembalikan ke backpack!", Color3.fromRGB(140, 255, 165))
-        end
-    end
-end)
-
-RunService.Heartbeat:Connect(function()
-    ScreenGui.Enabled = true
-    ToggleBtn.Visible = true
-
-    local t = tick()
-    tStroke.Thickness = 2 + (math.sin(t * 2.5) + 1)
-    mStroke.Thickness = 2 + (math.sin(t * 1.8 + 1) + 1) * 0.4
-
-    local inBagCount = 0
-    for _, td in pairs(toolsList) do
-        if td.tool and td.tool.Parent then
-            if forceVisTog.get() then
-                for _, v in pairs(td.tool:GetDescendants()) do
-                    if v:IsA("BasePart") then
-                        if v.Transparency ~= 0 then v.Transparency = 0 end
-                        if v.LocalTransparencyModifier ~= 0 then v.LocalTransparencyModifier = 0 end
-                    end
-                end
-            end
-            if td.tool.Parent == LocalPlayer.Backpack or td.tool.Parent == LocalPlayer.Character then
-                inBagCount = inBagCount + 1
-            end
-        end
-    end
-
-    statsLabel.Text = "Total Tools: " .. #toolsList .. "\nTools di Backpack: " .. inBagCount
-end)
-
-task.spawn(showNotif, "🌌 Tools Creator v1.0 siap!", Color3.fromRGB(180, 130, 255))
+print("SkillButtons loaded! 8 buttons aktif di pojok kanan atas.")
