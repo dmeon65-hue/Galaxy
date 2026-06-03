@@ -1,0 +1,1827 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local ScriptContext = game:GetService("ScriptContext")
+local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
+local Player = Players.LocalPlayer
+local Mouse = Player:GetMouse()
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "LSE_" .. HttpService:GenerateGUID(false)
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder = 999999
+ScreenGui.IgnoreGuiInset = false
+
+pcall(function()
+    if syn and syn.protect_gui then
+        syn.protect_gui(ScreenGui)
+        ScreenGui.Parent = CoreGui
+        return
+    end
+end)
+pcall(function()
+    if gethui and not ScreenGui.Parent then
+        ScreenGui.Parent = gethui()
+        return
+    end
+end)
+pcall(function()
+    if not ScreenGui.Parent then
+        ScreenGui.Parent = CoreGui
+    end
+end)
+if not ScreenGui.Parent then
+    ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+end
+
+local TC = {
+    void = Color3.fromRGB(4, 2, 14),
+    bg = Color3.fromRGB(7, 4, 20),
+    bgAlt = Color3.fromRGB(12, 8, 30),
+    surface = Color3.fromRGB(16, 10, 38),
+    surfaceHL = Color3.fromRGB(22, 14, 50),
+    panel = Color3.fromRGB(10, 6, 26),
+    accent = Color3.fromRGB(100, 60, 220),
+    accentBright = Color3.fromRGB(150, 110, 255),
+    accentDim = Color3.fromRGB(55, 30, 130),
+    accentSoft = Color3.fromRGB(80, 50, 170),
+    textPrimary = Color3.fromRGB(225, 215, 255),
+    textSecondary = Color3.fromRGB(130, 115, 190),
+    textDim = Color3.fromRGB(80, 70, 130),
+    textCode = Color3.fromRGB(210, 230, 255),
+    success = Color3.fromRGB(70, 220, 120),
+    error = Color3.fromRGB(255, 70, 85),
+    warning = Color3.fromRGB(255, 195, 60),
+    info = Color3.fromRGB(80, 170, 255),
+    red = Color3.fromRGB(190, 35, 55),
+    border = Color3.fromRGB(75, 50, 170),
+    borderDim = Color3.fromRGB(45, 30, 100),
+    scrollbar = Color3.fromRGB(90, 65, 190),
+    kwColor = Color3.fromRGB(210, 130, 255),
+    strColor = Color3.fromRGB(110, 220, 155),
+    numColor = Color3.fromRGB(255, 175, 95),
+    commentColor = Color3.fromRGB(75, 75, 115),
+    builtinColor = Color3.fromRGB(90, 195, 255),
+    funcColor = Color3.fromRGB(255, 215, 90),
+    selfColor = Color3.fromRGB(255, 120, 120),
+    boolColor = Color3.fromRGB(255, 135, 75),
+    opColor = Color3.fromRGB(200, 200, 230),
+    globalColor = Color3.fromRGB(255, 160, 200),
+    paramColor = Color3.fromRGB(180, 220, 255),
+    tableColor = Color3.fromRGB(180, 255, 200),
+    nebula1 = Color3.fromRGB(55, 15, 115),
+    nebula2 = Color3.fromRGB(15, 35, 115),
+    nebula3 = Color3.fromRGB(75, 12, 75),
+    nebula4 = Color3.fromRGB(20, 60, 80),
+    star1 = Color3.fromRGB(200, 200, 255),
+    star2 = Color3.fromRGB(255, 220, 180),
+    star3 = Color3.fromRGB(180, 220, 255),
+}
+
+local SyntaxDB = {
+    keywords = {["and"]=1,["break"]=1,["do"]=1,["else"]=1,["elseif"]=1,["end"]=1,["for"]=1,["function"]=1,["if"]=1,["in"]=1,["local"]=1,["not"]=1,["or"]=1,["repeat"]=1,["return"]=1,["then"]=1,["until"]=1,["while"]=1,["continue"]=1,["export"]=1,["type"]=1,["typeof"]=1},
+    builtins = {["print"]=1,["warn"]=1,["error"]=1,["pairs"]=1,["ipairs"]=1,["next"]=1,["select"]=1,["tonumber"]=1,["tostring"]=1,["type"]=1,["typeof"]=1,["unpack"]=1,["rawget"]=1,["rawset"]=1,["rawequal"]=1,["rawlen"]=1,["setmetatable"]=1,["getmetatable"]=1,["pcall"]=1,["xpcall"]=1,["assert"]=1,["collectgarbage"]=1,["require"]=1,["loadstring"]=1,["newproxy"]=1,["gcinfo"]=1,["wait"]=1,["spawn"]=1,["delay"]=1,["tick"]=1,["time"]=1,["elapsedTime"]=1},
+    globals = {["game"]=1,["workspace"]=1,["script"]=1,["Instance"]=1,["Enum"]=1,["Vector3"]=1,["Vector2"]=1,["CFrame"]=1,["Color3"]=1,["BrickColor"]=1,["UDim"]=1,["UDim2"]=1,["Ray"]=1,["Region3"]=1,["TweenInfo"]=1,["NumberSequence"]=1,["ColorSequence"]=1,["NumberRange"]=1,["Rect"]=1,["Font"]=1,["task"]=1,["os"]=1,["debug"]=1,["bit32"]=1,["utf8"]=1,["buffer"]=1,["string"]=1,["table"]=1,["math"]=1,["coroutine"]=1,["Drawing"]=1,["Axes"]=1,["Faces"]=1,["PathWaypoint"]=1,["PhysicalProperties"]=1,["NumberSequenceKeypoint"]=1,["ColorSequenceKeypoint"]=1,["DockWidgetPluginGuiInfo"]=1,["OverlapParams"]=1,["RaycastParams"]=1,["RaycastResult"]=1,["RotationCurveKey"]=1,["FloatCurveKey"]=1},
+    exploitGlobals = {["getgenv"]=1,["getrenv"]=1,["getfenv"]=1,["setfenv"]=1,["getsenv"]=1,["getscripts"]=1,["getrunningscripts"]=1,["getloadedmodules"]=1,["getconnections"]=1,["firesignal"]=1,["fireclickdetector"]=1,["firetouchinterest"]=1,["fireproximityprompt"]=1,["decompile"]=1,["saveinstance"]=1,["getscriptbytecode"]=1,["getscripthash"]=1,["getscriptclosure"]=1,["getnilinstances"]=1,["getinstances"]=1,["getcallingscript"]=1,["checkcaller"]=1,["islclosure"]=1,["iscclosure"]=1,["hookfunction"]=1,["hookmetamethod"]=1,["newcclosure"]=1,["getrawmetatable"]=1,["setrawmetatable"]=1,["setreadonly"]=1,["isreadonly"]=1,["getnamecallmethod"]=1,["setnamecallmethod"]=1,["writefile"]=1,["readfile"]=1,["appendfile"]=1,["isfile"]=1,["isfolder"]=1,["makefolder"]=1,["delfolder"]=1,["delfile"]=1,["listfiles"]=1,["setclipboard"]=1,["getclipboard"]=1,["request"]=1,["http_request"]=1,["identifyexecutor"]=1,["getexecutorname"]=1,["crypt"]=1,["base64"]=1,["websocket"]=1,["syn"]=1,["fluxus"]=1,["KRNL_LOADED"]=1,["replaceclosure"]=1,["setsource"]=1,["gethui"]=1,["setscriptable"]=1,["toclipboard"]=1,["getthreadidentity"]=1,["setthreadidentity"]=1,["isexecutorclosure"]=1,["cloneref"]=1,["compareinstances"]=1,["getcustomasset"]=1,["getobjects"]=1,["gethiddenproperty"]=1,["sethiddenproperty"]=1,["isnetworkowner"]=1},
+    constants = {["true"]=1,["false"]=1,["nil"]=1},
+    libraries = {["math"]=1,["string"]=1,["table"]=1,["coroutine"]=1,["os"]=1,["debug"]=1,["bit32"]=1,["utf8"]=1,["buffer"]=1,["task"]=1},
+}
+
+local function inst(className, props)
+    local i = Instance.new(className)
+    for k, v in pairs(props) do
+        if k ~= "Parent" then pcall(function() i[k] = v end) end
+    end
+    if props.Parent then i.Parent = props.Parent end
+    return i
+end
+
+local function corner(p, r) return inst("UICorner", {CornerRadius = UDim.new(0, r or 8), Parent = p}) end
+local function stroke(p, c, t, a) return inst("UIStroke", {Color = c or TC.border, Thickness = t or 1.5, Transparency = a or 0.3, Parent = p}) end
+local function pad(p, l, r, t, b) return inst("UIPadding", {PaddingLeft=UDim.new(0,l or 0), PaddingRight=UDim.new(0,r or 0), PaddingTop=UDim.new(0,t or 0), PaddingBottom=UDim.new(0,b or 0), Parent=p}) end
+
+local function gradient(p, c1, c2, rot)
+    return inst("UIGradient", {
+        Color = ColorSequence.new({ColorSequenceKeypoint.new(0, c1), ColorSequenceKeypoint.new(0.5, c2), ColorSequenceKeypoint.new(1, c1)}),
+        Rotation = rot or 45, Parent = p,
+    })
+end
+
+local function makeDraggable(obj, handle)
+    handle = handle or obj
+    local drag, dStart, sPos = false, nil, nil
+    handle.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            drag = true; dStart = i.Position; sPos = obj.Position
+            i.Changed:Connect(function() if i.UserInputState == Enum.UserInputState.End then drag = false end end)
+        end
+    end)
+    local function upd(i)
+        if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local d = i.Position - dStart
+            obj.Position = UDim2.new(sPos.X.Scale, sPos.X.Offset + d.X, sPos.Y.Scale, sPos.Y.Offset + d.Y)
+        end
+    end
+    handle.InputChanged:Connect(upd)
+    UserInputService.InputChanged:Connect(upd)
+end
+
+local function ripple(btn)
+    btn.ClipsDescendants = true
+    btn.MouseButton1Click:Connect(function()
+        local circle = inst("Frame", {
+            Size = UDim2.new(0, 0, 0, 0),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundTransparency = 0.7,
+            ZIndex = btn.ZIndex + 5,
+            Parent = btn,
+        })
+        corner(circle, 100)
+        local maxSize = math.max(btn.AbsoluteSize.X, btn.AbsoluteSize.Y) * 2.5
+        local tw = TweenService:Create(circle, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, maxSize, 0, maxSize),
+            BackgroundTransparency = 1,
+        })
+        tw:Play()
+        tw.Completed:Connect(function() circle:Destroy() end)
+    end)
+end
+
+local function hoverFx(btn, hoverColor, normalColor)
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = hoverColor or TC.surfaceHL}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = normalColor or btn.BackgroundColor3}):Play()
+    end)
+end
+
+local function createStars(parent, count)
+    local starColors = {TC.star1, TC.star2, TC.star3}
+    for i = 1, count do
+        local sz = math.random(1, 3)
+        local s = inst("Frame", {
+            Name = "S"..i, Size = UDim2.new(0, sz, 0, sz),
+            Position = UDim2.new(math.random(0,1000)/1000, 0, math.random(0,1000)/1000, 0),
+            BackgroundColor3 = starColors[math.random(1, #starColors)],
+            BackgroundTransparency = math.random(1, 6)/10,
+            BorderSizePixel = 0, ZIndex = parent.ZIndex + 1, Parent = parent,
+        })
+        corner(s, 10)
+        task.defer(function()
+            while s and s.Parent do
+                local dur = math.random(10, 30)/10
+                TweenService:Create(s, TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                    BackgroundTransparency = math.random(1, 9)/10,
+                    Size = UDim2.new(0, math.random(1, 4), 0, math.random(1, 4)),
+                }):Play()
+                task.wait(dur)
+            end
+        end)
+    end
+end
+
+local function createNebulae(parent, count)
+    local nebulaColors = {TC.nebula1, TC.nebula2, TC.nebula3, TC.nebula4}
+    for i = 1, (count or 6) do
+        local n = inst("Frame", {
+            Name = "N"..i,
+            Size = UDim2.new(0, math.random(50,180), 0, math.random(30,130)),
+            Position = UDim2.new(math.random(0,850)/1000, 0, math.random(0,850)/1000, 0),
+            BackgroundColor3 = nebulaColors[math.random(1, #nebulaColors)],
+            BackgroundTransparency = 0.84 + math.random(0,12)/100,
+            BorderSizePixel = 0, ZIndex = parent.ZIndex + 1, Parent = parent,
+        })
+        corner(n, 50)
+        task.defer(function()
+            while n and n.Parent do
+                local dur = math.random(12, 45)
+                TweenService:Create(n, TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                    Position = UDim2.new(math.random(0,850)/1000, 0, math.random(0,850)/1000, 0),
+                    BackgroundTransparency = 0.80 + math.random(0,16)/100,
+                    BackgroundColor3 = nebulaColors[math.random(1, #nebulaColors)],
+                    Rotation = math.random(-15, 15),
+                }):Play()
+                task.wait(dur)
+            end
+        end)
+    end
+end
+
+local function createShootingStar(parent)
+    task.defer(function()
+        while parent and parent.Parent do
+            task.wait(math.random(4, 12))
+            local startX = math.random(0, 100)/100
+            local s = inst("Frame", {
+                Size = UDim2.new(0, math.random(20, 60), 0, 1),
+                Position = UDim2.new(startX, 0, 0, 0),
+                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+                BackgroundTransparency = 0.3,
+                BorderSizePixel = 0,
+                Rotation = math.random(25, 55),
+                ZIndex = parent.ZIndex + 2,
+                Parent = parent,
+            })
+            corner(s, 2)
+            local tw = TweenService:Create(s, TweenInfo.new(math.random(6,14)/10, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Position = UDim2.new(startX + 0.4, 0, 1, 0),
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 2, 0, 1),
+            })
+            tw:Play()
+            tw.Completed:Connect(function() s:Destroy() end)
+        end
+    end)
+end
+
+local ToggleButton = inst("TextButton", {
+    Name = "Toggle", Size = UDim2.new(0, 48, 0, 48),
+    Position = UDim2.new(0, 10, 0.5, -24),
+    BackgroundColor3 = TC.bg, Text = "✦",
+    TextColor3 = TC.accentBright, TextSize = 24,
+    Font = Enum.Font.GothamBold, AutoButtonColor = false,
+    ZIndex = 100, Parent = ScreenGui,
+})
+corner(ToggleButton, 24)
+stroke(ToggleButton, TC.accent, 2.5, 0.1)
+gradient(ToggleButton, TC.bg, TC.accentDim, 135)
+makeDraggable(ToggleButton)
+ripple(ToggleButton)
+
+local glow = inst("ImageLabel", {
+    Size = UDim2.new(1, 30, 1, 30), Position = UDim2.new(0, -15, 0, -15),
+    BackgroundTransparency = 1, Image = "rbxassetid://5028857084",
+    ImageColor3 = TC.accent, ImageTransparency = 0.7,
+    ZIndex = 99, Parent = ToggleButton,
+})
+
+task.defer(function()
+    while ToggleButton and ToggleButton.Parent do
+        TweenService:Create(glow, TweenInfo.new(1.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.35, Size = UDim2.new(1, 36, 1, 36), Position = UDim2.new(0, -18, 0, -18)}):Play()
+        task.wait(1.8)
+        TweenService:Create(glow, TweenInfo.new(1.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {ImageTransparency = 0.8, Size = UDim2.new(1, 24, 1, 24), Position = UDim2.new(0, -12, 0, -12)}):Play()
+        task.wait(1.8)
+    end
+end)
+
+local MainFrame = inst("Frame", {
+    Name = "Main", Size = UDim2.new(0, 440, 0, 530),
+    Position = UDim2.new(0.5, -220, 0.5, -265),
+    BackgroundColor3 = TC.bg, BorderSizePixel = 0,
+    ClipsDescendants = true, Visible = false, ZIndex = 10, Parent = ScreenGui,
+})
+corner(MainFrame, 16)
+stroke(MainFrame, TC.accent, 2, 0.15)
+local mainGrad = gradient(MainFrame, TC.bg, Color3.fromRGB(16, 8, 42), 160)
+
+inst("ImageLabel", {
+    Size = UDim2.new(1, 60, 1, 60), Position = UDim2.new(0, -30, 0, -30),
+    BackgroundTransparency = 1, Image = "rbxassetid://5028857084",
+    ImageColor3 = Color3.fromRGB(0, 0, 0), ImageTransparency = 0.45,
+    ZIndex = 9, ScaleType = Enum.ScaleType.Slice,
+    SliceCenter = Rect.new(24, 24, 276, 276), Parent = MainFrame,
+})
+
+createNebulae(MainFrame, 7)
+createStars(MainFrame, 70)
+createShootingStar(MainFrame)
+
+local TitleBar = inst("Frame", {
+    Name = "TitleBar", Size = UDim2.new(1, 0, 0, 40),
+    BackgroundColor3 = TC.surface, BorderSizePixel = 0,
+    ZIndex = 25, Parent = MainFrame,
+})
+corner(TitleBar, 16)
+gradient(TitleBar, Color3.fromRGB(12, 7, 35), Color3.fromRGB(40, 16, 85), 90)
+inst("Frame", {Size = UDim2.new(1, 0, 0, 16), Position = UDim2.new(0, 0, 1, -16), BackgroundColor3 = Color3.fromRGB(12, 7, 35), BorderSizePixel = 0, ZIndex = 25, Parent = TitleBar})
+
+local TitleIcon = inst("TextLabel", {
+    Size = UDim2.new(0, 22, 0, 22), Position = UDim2.new(0, 10, 0.5, -11),
+    BackgroundTransparency = 1, Text = "✦", TextColor3 = TC.accentBright,
+    TextSize = 16, Font = Enum.Font.GothamBold, ZIndex = 27, Parent = TitleBar,
+})
+
+task.defer(function()
+    local hue = 0
+    while TitleIcon and TitleIcon.Parent do
+        hue = (hue + 0.005) % 1
+        TitleIcon.TextColor3 = Color3.fromHSV(hue, 0.5, 1)
+        task.wait(0.05)
+    end
+end)
+
+inst("TextLabel", {
+    Size = UDim2.new(1, -120, 1, 0), Position = UDim2.new(0, 36, 0, 0),
+    BackgroundTransparency = 1, Text = "Local Script Editor v1.0",
+    TextColor3 = TC.accentBright, TextSize = 14,
+    Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 27, Parent = TitleBar,
+})
+
+makeDraggable(MainFrame, TitleBar)
+
+local function titleBtn(name, txt, offX, color)
+    local b = inst("TextButton", {
+        Name=name, Size=UDim2.new(0,30,0,30), Position=UDim2.new(1,offX,0,5),
+        BackgroundColor3=color, Text=txt, TextColor3=TC.textPrimary,
+        TextSize=14, Font=Enum.Font.GothamBold, AutoButtonColor=false,
+        ZIndex=28, Parent=TitleBar,
+    })
+    corner(b, 8)
+    ripple(b)
+    return b
+end
+
+local CloseBtn = titleBtn("Close", "✕", -36, TC.red)
+local MinBtn = titleBtn("Min", "─", -70, TC.accentDim)
+local PinBtn = titleBtn("Pin", "📌", -104, TC.accentDim)
+local pinned = false
+
+PinBtn.MouseButton1Click:Connect(function()
+    pinned = not pinned
+    TweenService:Create(PinBtn, TweenInfo.new(0.2), {
+        BackgroundColor3 = pinned and TC.accent or TC.accentDim
+    }):Play()
+end)
+
+local ResizeHandle = inst("TextButton", {
+    Name = "Resize", Size = UDim2.new(0, 18, 0, 18),
+    Position = UDim2.new(1, -20, 1, -20),
+    BackgroundColor3 = TC.accent, BackgroundTransparency = 0.5,
+    Text = "◢", TextColor3 = TC.textDim, TextSize = 12,
+    Font = Enum.Font.GothamBold, AutoButtonColor = false,
+    ZIndex = 30, Parent = MainFrame,
+})
+corner(ResizeHandle, 4)
+
+local resizing, resizeStart, resizeStartSize = false, nil, nil
+ResizeHandle.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        resizing = true; resizeStart = i.Position; resizeStartSize = MainFrame.Size
+        i.Changed:Connect(function() if i.UserInputState == Enum.UserInputState.End then resizing = false end end)
+    end
+end)
+UserInputService.InputChanged:Connect(function(i)
+    if resizing and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local d = i.Position - resizeStart
+        local newW = math.clamp(resizeStartSize.X.Offset + d.X, 320, 800)
+        local newH = math.clamp(resizeStartSize.Y.Offset + d.Y, 300, 900)
+        MainFrame.Size = UDim2.new(0, newW, 0, newH)
+    end
+end)
+
+local TabBar = inst("Frame", {
+    Name = "TabBar", Size = UDim2.new(1, -16, 0, 32),
+    Position = UDim2.new(0, 8, 0, 44),
+    BackgroundTransparency = 1, ZIndex = 25, Parent = MainFrame,
+})
+
+local tabNames = {"Editor", "Explorer", "Console", "Env Spy", "Settings"}
+local tabFrames, tabButtons = {}, {}
+local activeTab = "Editor"
+
+for i, name in ipairs(tabNames) do
+    local w = name == "Env Spy" and 65 or 70
+    local xOff = 0
+    for j = 1, i-1 do xOff = xOff + (tabNames[j] == "Env Spy" and 68 or 73) end
+    local tb = inst("TextButton", {
+        Name = "Tab_"..name, Size = UDim2.new(0, w, 0, 26),
+        Position = UDim2.new(0, xOff, 0, 3),
+        BackgroundColor3 = i==1 and TC.accent or TC.surface,
+        BackgroundTransparency = i==1 and 0.25 or 0.7,
+        Text = name, TextColor3 = i==1 and TC.textPrimary or TC.textSecondary,
+        TextSize = 10, Font = Enum.Font.GothamBold,
+        AutoButtonColor = false, ZIndex = 26, Parent = TabBar,
+    })
+    corner(tb, 6)
+    ripple(tb)
+    tabButtons[name] = tb
+end
+
+local ContentArea = inst("Frame", {
+    Name = "Content", Size = UDim2.new(1, -16, 1, -96),
+    Position = UDim2.new(0, 8, 0, 80),
+    BackgroundTransparency = 1, ZIndex = 15,
+    ClipsDescendants = true, Parent = MainFrame,
+})
+
+local EditorTab = inst("Frame", {Name="EditorTab", Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, ZIndex=15, Visible=true, Parent=ContentArea})
+
+inst("TextLabel", {Size=UDim2.new(1,0,0,14), BackgroundTransparency=1, Text="Target Script Path:", TextColor3=TC.textSecondary, TextSize=10, Font=Enum.Font.GothamSemibold, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=16, Parent=EditorTab})
+
+local PathInput = inst("TextBox", {
+    Name="Path", Size=UDim2.new(1,0,0,30), Position=UDim2.new(0,0,0,16),
+    BackgroundColor3=TC.surface, Text="", PlaceholderText="PlayerScripts.MyScript  |  Backpack.Tool.Script",
+    PlaceholderColor3=TC.textDim, TextColor3=TC.success, TextSize=12,
+    Font=Enum.Font.Code, TextXAlignment=Enum.TextXAlignment.Left,
+    ClearTextOnFocus=false, ZIndex=16, Parent=EditorTab,
+})
+corner(PathInput, 6); stroke(PathInput, TC.borderDim, 1, 0.4); pad(PathInput, 10, 10, 0, 0)
+
+local InfoBar = inst("Frame", {
+    Size=UDim2.new(1,0,0,14), Position=UDim2.new(0,0,0,50),
+    BackgroundTransparency=1, ZIndex=16, Parent=EditorTab,
+})
+
+local LineCountLabel = inst("TextLabel", {
+    Size=UDim2.new(0.5,0,1,0), BackgroundTransparency=1,
+    Text="Ln 0 | Ch 0", TextColor3=TC.textDim, TextSize=9,
+    Font=Enum.Font.Code, TextXAlignment=Enum.TextXAlignment.Left,
+    ZIndex=17, Parent=InfoBar,
+})
+
+local ScriptInfoLabel = inst("TextLabel", {
+    Size=UDim2.new(0.5,0,1,0), Position=UDim2.new(0.5,0,0,0),
+    BackgroundTransparency=1, Text="", TextColor3=TC.textDim,
+    TextSize=9, Font=Enum.Font.Code, TextXAlignment=Enum.TextXAlignment.Right,
+    ZIndex=17, Parent=InfoBar,
+})
+
+local EditorContainer = inst("Frame", {
+    Name="EditorContainer", Size=UDim2.new(1,0,1,-158),
+    Position=UDim2.new(0,0,0,66), BackgroundColor3=TC.void,
+    BorderSizePixel=0, ClipsDescendants=true, ZIndex=16, Parent=EditorTab,
+})
+corner(EditorContainer, 8); stroke(EditorContainer, TC.borderDim, 1, 0.4)
+
+local LineNumbers = inst("ScrollingFrame", {
+    Name="Lines", Size=UDim2.new(0,38,1,0),
+    BackgroundColor3=Color3.fromRGB(8,5,20), BorderSizePixel=0,
+    ScrollBarThickness=0, CanvasSize=UDim2.new(0,0,0,0),
+    AutomaticCanvasSize=Enum.AutomaticSize.Y, ScrollingEnabled=false,
+    ZIndex=17, Parent=EditorContainer,
+})
+
+local LineNumText = inst("TextLabel", {
+    Size=UDim2.new(1,-6,0,0), Position=UDim2.new(0,2,0,2),
+    BackgroundTransparency=1, Text="1", TextColor3=TC.textDim,
+    TextSize=13, Font=Enum.Font.Code, TextXAlignment=Enum.TextXAlignment.Right,
+    TextYAlignment=Enum.TextYAlignment.Top, AutomaticSize=Enum.AutomaticSize.Y,
+    ZIndex=18, RichText=true, Parent=LineNumbers,
+})
+
+local SyntaxHL = inst("ScrollingFrame", {
+    Name="SyntaxHL", Size=UDim2.new(1,-40,1,0), Position=UDim2.new(0,40,0,0),
+    BackgroundTransparency=1, BorderSizePixel=0, ScrollBarThickness=6,
+    ScrollBarImageColor3=TC.scrollbar, CanvasSize=UDim2.new(0,0,0,0),
+    AutomaticCanvasSize=Enum.AutomaticSize.Y, ZIndex=17, Parent=EditorContainer,
+})
+
+local HLLabel = inst("TextLabel", {
+    Size=UDim2.new(1,-10,0,0), Position=UDim2.new(0,5,0,2),
+    BackgroundTransparency=1, Text="", TextColor3=TC.textCode,
+    TextSize=13, Font=Enum.Font.Code, TextXAlignment=Enum.TextXAlignment.Left,
+    TextYAlignment=Enum.TextYAlignment.Top, TextWrapped=true,
+    AutomaticSize=Enum.AutomaticSize.Y, RichText=true, ZIndex=18, Parent=SyntaxHL,
+})
+
+local CodeScroll = inst("ScrollingFrame", {
+    Name="CodeScroll", Size=UDim2.new(1,-40,1,0), Position=UDim2.new(0,40,0,0),
+    BackgroundTransparency=1, BorderSizePixel=0, ScrollBarThickness=6,
+    ScrollBarImageColor3=TC.scrollbar, CanvasSize=UDim2.new(0,0,0,0),
+    AutomaticCanvasSize=Enum.AutomaticSize.Y, ZIndex=19, Parent=EditorContainer,
+})
+
+local CodeInput = inst("TextBox", {
+    Name="Code", Size=UDim2.new(1,-10,0,0), Position=UDim2.new(0,5,0,2),
+    BackgroundTransparency=1, Text="", PlaceholderText="",
+    TextColor3=Color3.fromRGB(255,255,255), TextTransparency=0.78,
+    TextSize=13, Font=Enum.Font.Code, TextXAlignment=Enum.TextXAlignment.Left,
+    TextYAlignment=Enum.TextYAlignment.Top, ClearTextOnFocus=false,
+    MultiLine=true, TextWrapped=true, AutomaticSize=Enum.AutomaticSize.Y,
+    ZIndex=20, Parent=CodeScroll,
+})
+
+local function syncScroll(source, targets)
+    source:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+        for _, t in ipairs(targets) do
+            if t ~= source then
+                if t == LineNumbers then
+                    t.CanvasPosition = Vector2.new(0, source.CanvasPosition.Y)
+                else
+                    t.CanvasPosition = source.CanvasPosition
+                end
+            end
+        end
+    end)
+end
+syncScroll(CodeScroll, {SyntaxHL, LineNumbers})
+syncScroll(SyntaxHL, {CodeScroll, LineNumbers})
+
+local function rgbHex(c) return string.format("#%02X%02X%02X", math.floor(c.R*255), math.floor(c.G*255), math.floor(c.B*255)) end
+local function escRich(s)
+    s = string.gsub(s, "&", "&amp;")
+    s = string.gsub(s, "<", "&lt;")
+    s = string.gsub(s, ">", "&gt;")
+    s = string.gsub(s, '"', "&quot;")
+    return s
+end
+local function cWrap(t, c) return '<font color="'..rgbHex(c)..'">'..t..'</font>' end
+
+local function highlightCode(source)
+    local r = {}
+    local i, len = 1, #source
+    while i <= len do
+        local ch = string.sub(source, i, i)
+        if ch == "-" and string.sub(source, i, i+1) == "--" then
+            if string.sub(source, i, i+3) == "--[[" then
+                local cl = string.find(source, "%]%]", i+4, true)
+                if cl then
+                    table.insert(r, cWrap(escRich(string.sub(source, i, cl+1)), TC.commentColor))
+                    i = cl + 2
+                else
+                    table.insert(r, cWrap(escRich(string.sub(source, i)), TC.commentColor))
+                    i = len + 1
+                end
+            else
+                local nl = string.find(source, "\n", i, true)
+                if nl then
+                    table.insert(r, cWrap(escRich(string.sub(source, i, nl-1)), TC.commentColor))
+                    i = nl
+                else
+                    table.insert(r, cWrap(escRich(string.sub(source, i)), TC.commentColor))
+                    i = len + 1
+                end
+            end
+        elseif ch == "[" and (string.sub(source, i, i+1) == "[[" or string.match(string.sub(source, i, i+10), "^%[=*%[")) then
+            local eqCount = 0
+            local j = i + 1
+            while j <= len and string.sub(source, j, j) == "=" do eqCount = eqCount + 1; j = j + 1 end
+            if j <= len and string.sub(source, j, j) == "[" then
+                local closePattern = "]" .. string.rep("=", eqCount) .. "]"
+                local cl = string.find(source, closePattern, j+1, true)
+                if cl then
+                    table.insert(r, cWrap(escRich(string.sub(source, i, cl + #closePattern - 1)), TC.strColor))
+                    i = cl + #closePattern
+                else
+                    table.insert(r, cWrap(escRich(string.sub(source, i)), TC.strColor))
+                    i = len + 1
+                end
+            else
+                table.insert(r, escRich(ch))
+                i = i + 1
+            end
+        elseif ch == '"' or ch == "'" then
+            local q = ch
+            local j = i + 1
+            while j <= len do
+                local c2 = string.sub(source, j, j)
+                if c2 == "\\" then j = j + 2
+                elseif c2 == q then j = j + 1; break
+                elseif c2 == "\n" then break
+                else j = j + 1 end
+            end
+            table.insert(r, cWrap(escRich(string.sub(source, i, j-1)), TC.strColor))
+            i = j
+        elseif ch == "`" then
+            local j = i + 1
+            while j <= len do
+                local c2 = string.sub(source, j, j)
+                if c2 == "\\" then j = j + 2
+                elseif c2 == "`" then j = j + 1; break
+                else j = j + 1 end
+            end
+            table.insert(r, cWrap(escRich(string.sub(source, i, j-1)), TC.strColor))
+            i = j
+        elseif string.match(ch, "%d") or (ch == "." and string.match(string.sub(source, i+1, i+1) or "", "%d")) then
+            local j = i
+            if string.sub(source, i, i+1) == "0x" or string.sub(source, i, i+1) == "0X" then
+                j = j + 2
+                while j <= len and string.match(string.sub(source, j, j), "[%da-fA-F_]") do j = j + 1 end
+            elseif string.sub(source, i, i+1) == "0b" or string.sub(source, i, i+1) == "0B" then
+                j = j + 2
+                while j <= len and string.match(string.sub(source, j, j), "[01_]") do j = j + 1 end
+            else
+                while j <= len and string.match(string.sub(source, j, j), "[%d_]") do j = j + 1 end
+                if j <= len and string.sub(source, j, j) == "." then
+                    j = j + 1
+                    while j <= len and string.match(string.sub(source, j, j), "[%d_]") do j = j + 1 end
+                end
+                if j <= len and string.match(string.sub(source, j, j), "[eE]") then
+                    j = j + 1
+                    if j <= len and string.match(string.sub(source, j, j), "[%+%-]") then j = j + 1 end
+                    while j <= len and string.match(string.sub(source, j, j), "[%d_]") do j = j + 1 end
+                end
+            end
+            table.insert(r, cWrap(escRich(string.sub(source, i, j-1)), TC.numColor))
+            i = j
+        elseif string.match(ch, "[%a_]") then
+            local j = i
+            while j <= len and string.match(string.sub(source, j, j), "[%w_]") do j = j + 1 end
+            local word = string.sub(source, i, j-1)
+            local afterChar = j <= len and string.sub(source, j, j) or ""
+            if SyntaxDB.constants[word] then
+                table.insert(r, cWrap(escRich(word), TC.boolColor))
+            elseif SyntaxDB.keywords[word] then
+                table.insert(r, cWrap(escRich(word), TC.kwColor))
+            elseif word == "self" then
+                table.insert(r, cWrap(escRich(word), TC.selfColor))
+            elseif SyntaxDB.exploitGlobals[word] then
+                table.insert(r, cWrap(escRich(word), TC.globalColor))
+            elseif SyntaxDB.globals[word] then
+                table.insert(r, cWrap(escRich(word), TC.builtinColor))
+            elseif SyntaxDB.builtins[word] then
+                if afterChar == "(" then
+                    table.insert(r, cWrap(escRich(word), TC.funcColor))
+                else
+                    table.insert(r, cWrap(escRich(word), TC.builtinColor))
+                end
+            elseif afterChar == "(" then
+                table.insert(r, cWrap(escRich(word), TC.funcColor))
+            elseif afterChar == "." and SyntaxDB.libraries[word] then
+                table.insert(r, cWrap(escRich(word), TC.builtinColor))
+            else
+                table.insert(r, escRich(word))
+            end
+            i = j
+        elseif string.match(ch, "[%(%)%{%}%[%]]") then
+            table.insert(r, cWrap(escRich(ch), TC.tableColor))
+            i = i + 1
+        elseif string.match(ch, "[%+%-%%%*%/%%=~<>%.#%^:;,|&!%?@]") then
+            table.insert(r, cWrap(escRich(ch), TC.opColor))
+            i = i + 1
+        else
+            table.insert(r, escRich(ch))
+            i = i + 1
+        end
+    end
+    return table.concat(r)
+end
+
+local hlDebounce = false
+local Settings = {
+    syntaxHL = true,
+    autoSave = false,
+    fontSize = 13,
+    opacity = 0,
+    wrapText = true,
+    autoIndent = true,
+    tabSize = 4,
+}
+
+local function updateSyntax()
+    if hlDebounce then return end
+    hlDebounce = true
+    task.defer(function()
+        local src = CodeInput.Text
+        local lineCount = 1
+        for _ in string.gmatch(src, "\n") do lineCount = lineCount + 1 end
+        local nums = {}
+        for l = 1, lineCount do
+            table.insert(nums, cWrap(tostring(l), TC.textDim))
+        end
+        LineNumText.Text = table.concat(nums, "\n")
+        LineCountLabel.Text = "Ln " .. lineCount .. " | Ch " .. #src
+        if Settings.syntaxHL and #src < 50000 then
+            local ok, hl = pcall(highlightCode, src)
+            HLLabel.Text = ok and hl or escRich(src)
+        elseif not Settings.syntaxHL then
+            HLLabel.Text = ""
+        else
+            HLLabel.Text = escRich(src)
+        end
+        hlDebounce = false
+    end)
+end
+
+CodeInput:GetPropertyChangedSignal("Text"):Connect(updateSyntax)
+
+local BtnFrame = inst("Frame", {
+    Name="Buttons", Size=UDim2.new(1,0,0,70),
+    Position=UDim2.new(0,0,1,-86), BackgroundTransparency=1,
+    ZIndex=16, Parent=EditorTab,
+})
+
+local function actBtn(name, text, row, col, c1, c2, totalCols)
+    totalCols = totalCols or 5
+    local w = 1/totalCols - 0.008
+    local x = col * (1/totalCols)
+    local b = inst("TextButton", {
+        Name=name, Size=UDim2.new(w, -2, 0, 26),
+        Position=UDim2.new(x, 1, 0, row*30),
+        BackgroundColor3=c1, Text=text,
+        TextColor3=TC.textPrimary, TextSize=10,
+        Font=Enum.Font.GothamBold, AutoButtonColor=false,
+        ZIndex=17, Parent=BtnFrame,
+    })
+    corner(b, 6)
+    gradient(b, c1, c2, 90)
+    ripple(b)
+    return b
+end
+
+local LoadBtn = actBtn("Load", "⟳ Load", 0, 0, Color3.fromRGB(22,16,65), Color3.fromRGB(45,32,110))
+local ApplyBtn = actBtn("Apply", "✦ Apply", 0, 1, Color3.fromRGB(38,10,85), Color3.fromRGB(70,22,155))
+local DecompBtn = actBtn("Decomp", "◈ Decompile", 0, 2, Color3.fromRGB(12,42,25), Color3.fromRGB(30,85,50))
+local ExecBtn = actBtn("Exec", "▶ Execute", 0, 3, Color3.fromRGB(18,32,65), Color3.fromRGB(36,65,130))
+local InjectBtn = actBtn("Inject", "⚡ Inject", 0, 4, Color3.fromRGB(50,18,55), Color3.fromRGB(100,35,110))
+local SaveBtn = actBtn("Save", "💾 Save", 1, 0, Color3.fromRGB(48,28,10), Color3.fromRGB(90,52,22))
+local ClipBtn = actBtn("Copy", "📋 Copy", 1, 1, Color3.fromRGB(38,22,55), Color3.fromRGB(75,45,110))
+local ClearBtn = actBtn("Clear", "🗑 Clear", 1, 2, Color3.fromRGB(55,12,18), Color3.fromRGB(110,28,38))
+local UndoBtn = actBtn("Undo", "↶ Undo", 1, 3, Color3.fromRGB(28,28,48), Color3.fromRGB(55,55,95))
+local SearchBtn = actBtn("Search", "🔍 Find", 1, 4, Color3.fromRGB(15,35,55), Color3.fromRGB(30,70,110))
+
+local SearchFrame = inst("Frame", {
+    Name="SearchFrame", Size=UDim2.new(1,0,0,30),
+    Position=UDim2.new(0,0,1,-16), BackgroundColor3=TC.surface,
+    BackgroundTransparency=0.3, Visible=false, ZIndex=22, Parent=EditorTab,
+})
+corner(SearchFrame, 6)
+
+local SearchInput = inst("TextBox", {
+    Size=UDim2.new(0.5,-5,0,24), Position=UDim2.new(0,4,0,3),
+    BackgroundColor3=TC.panel, Text="", PlaceholderText="Find...",
+    PlaceholderColor3=TC.textDim, TextColor3=TC.textPrimary,
+    TextSize=11, Font=Enum.Font.Code, ClearTextOnFocus=false,
+    ZIndex=23, Parent=SearchFrame,
+})
+corner(SearchInput, 4); pad(SearchInput, 6, 6, 0, 0)
+
+local ReplaceInput = inst("TextBox", {
+    Size=UDim2.new(0.35,-5,0,24), Position=UDim2.new(0.5,3,0,3),
+    BackgroundColor3=TC.panel, Text="", PlaceholderText="Replace...",
+    PlaceholderColor3=TC.textDim, TextColor3=TC.textPrimary,
+    TextSize=11, Font=Enum.Font.Code, ClearTextOnFocus=false,
+    ZIndex=23, Parent=SearchFrame,
+})
+corner(ReplaceInput, 4); pad(ReplaceInput, 6, 6, 0, 0)
+
+local ReplaceBtn = inst("TextButton", {
+    Size=UDim2.new(0.15,-5,0,24), Position=UDim2.new(0.85,3,0,3),
+    BackgroundColor3=TC.accentDim, Text="Replace",
+    TextColor3=TC.textPrimary, TextSize=10, Font=Enum.Font.GothamBold,
+    AutoButtonColor=false, ZIndex=23, Parent=SearchFrame,
+})
+corner(ReplaceBtn, 4); ripple(ReplaceBtn)
+
+local searchOpen = false
+SearchBtn.MouseButton1Click:Connect(function()
+    searchOpen = not searchOpen
+    SearchFrame.Visible = searchOpen
+end)
+
+ReplaceBtn.MouseButton1Click:Connect(function()
+    local find = SearchInput.Text
+    local rep = ReplaceInput.Text
+    if find == "" then return end
+    CodeInput.Text = string.gsub(CodeInput.Text, find, rep)
+    updateSyntax()
+end)
+
+local StatusBar = inst("Frame", {
+    Size=UDim2.new(1,0,0,16), Position=UDim2.new(0,0,1,0),
+    BackgroundTransparency=1, ZIndex=16, Parent=EditorTab,
+})
+
+local StatusLabel = inst("TextLabel", {
+    Size=UDim2.new(0.65,0,1,0), BackgroundTransparency=1,
+    Text="Ready", TextColor3=TC.success, TextSize=10,
+    Font=Enum.Font.GothamSemibold, TextXAlignment=Enum.TextXAlignment.Left,
+    ZIndex=17, Parent=StatusBar,
+})
+
+local ExecInfoLabel = inst("TextLabel", {
+    Size=UDim2.new(0.35,0,1,0), Position=UDim2.new(0.65,0,0,0),
+    BackgroundTransparency=1, Text="", TextColor3=TC.textDim,
+    TextSize=9, Font=Enum.Font.Code, TextXAlignment=Enum.TextXAlignment.Right,
+    ZIndex=17, Parent=StatusBar,
+})
+
+pcall(function()
+    local n = "Unknown"
+    if identifyexecutor then n = identifyexecutor()
+    elseif getexecutorname then n = getexecutorname()
+    elseif syn then n = "Synapse"
+    elseif KRNL_LOADED then n = "Krnl"
+    elseif fluxus then n = "Fluxus" end
+    ExecInfoLabel.Text = tostring(n)
+end)
+
+local ExplorerTab = inst("Frame", {Name="ExplorerTab", Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, ZIndex=15, Visible=false, Parent=ContentArea})
+
+local ExpSearchBox = inst("TextBox", {
+    Size=UDim2.new(1,-75,0,28), BackgroundColor3=TC.surface,
+    Text="", PlaceholderText="Search scripts...", PlaceholderColor3=TC.textDim,
+    TextColor3=TC.textPrimary, TextSize=11, Font=Enum.Font.Code,
+    TextXAlignment=Enum.TextXAlignment.Left, ClearTextOnFocus=false,
+    ZIndex=16, Parent=ExplorerTab,
+})
+corner(ExpSearchBox, 6); stroke(ExpSearchBox, TC.borderDim, 1, 0.4); pad(ExpSearchBox, 10, 10, 0, 0)
+
+local ExpFilterBtn = inst("TextButton", {
+    Size=UDim2.new(0,70,0,28), Position=UDim2.new(1,-70,0,0),
+    BackgroundColor3=TC.accentDim, Text="All Types",
+    TextColor3=TC.textPrimary, TextSize=10, Font=Enum.Font.GothamBold,
+    AutoButtonColor=false, ZIndex=16, Parent=ExplorerTab,
+})
+corner(ExpFilterBtn, 6); ripple(ExpFilterBtn)
+local expFilter = "All"
+ExpFilterBtn.MouseButton1Click:Connect(function()
+    if expFilter == "All" then expFilter = "LocalScript"; ExpFilterBtn.Text = "Local"
+    elseif expFilter == "LocalScript" then expFilter = "ModuleScript"; ExpFilterBtn.Text = "Module"
+    else expFilter = "All"; ExpFilterBtn.Text = "All Types" end
+end)
+
+local ExpScroll = inst("ScrollingFrame", {
+    Size=UDim2.new(1,0,1,-66), Position=UDim2.new(0,0,0,32),
+    BackgroundColor3=TC.void, BorderSizePixel=0, ScrollBarThickness=5,
+    ScrollBarImageColor3=TC.scrollbar, CanvasSize=UDim2.new(0,0,0,0),
+    AutomaticCanvasSize=Enum.AutomaticSize.Y, ZIndex=16, Parent=ExplorerTab,
+})
+corner(ExpScroll, 6); stroke(ExpScroll, TC.borderDim, 1, 0.4)
+inst("UIListLayout", {SortOrder=Enum.SortOrder.Name, Padding=UDim.new(0,2), Parent=ExpScroll})
+
+local ExpCountLabel = inst("TextLabel", {
+    Size=UDim2.new(0.5,0,0,28), Position=UDim2.new(0,0,1,-30),
+    BackgroundTransparency=1, Text="0 scripts found",
+    TextColor3=TC.textDim, TextSize=10, Font=Enum.Font.Code,
+    TextXAlignment=Enum.TextXAlignment.Left, ZIndex=16, Parent=ExplorerTab,
+})
+
+local RefreshBtn = inst("TextButton", {
+    Size=UDim2.new(0.5,0,0,28), Position=UDim2.new(0.5,0,1,-30),
+    BackgroundColor3=TC.accentDim, Text="⟳ Refresh",
+    TextColor3=TC.textPrimary, TextSize=11, Font=Enum.Font.GothamBold,
+    AutoButtonColor=false, ZIndex=16, Parent=ExplorerTab,
+})
+corner(RefreshBtn, 6); ripple(RefreshBtn)
+
+local function populateExplorer(filter)
+    for _, c in ipairs(ExpScroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+    local scripts = {}
+    local visited = {}
+    local function scan(parent, depth)
+        if depth > 12 then return end
+        pcall(function()
+            for _, child in ipairs(parent:GetChildren()) do
+                if not visited[child] then
+                    visited[child] = true
+                    if child:IsA("LocalScript") or child:IsA("ModuleScript") then
+                        if expFilter == "All" or child.ClassName == expFilter then
+                            table.insert(scripts, child)
+                        end
+                    end
+                    pcall(function() scan(child, depth + 1) end)
+                end
+            end
+        end)
+    end
+    scan(Player, 0)
+    pcall(function()
+        if getscripts then
+            for _, s in ipairs(getscripts()) do
+                if not visited[s] and (s:IsA("LocalScript") or s:IsA("ModuleScript")) then
+                    if expFilter == "All" or s.ClassName == expFilter then
+                        visited[s] = true
+                        table.insert(scripts, s)
+                    end
+                end
+            end
+        end
+    end)
+    pcall(function()
+        if getrunningscripts then
+            for _, s in ipairs(getrunningscripts()) do
+                if not visited[s] and (s:IsA("LocalScript") or s:IsA("ModuleScript")) then
+                    if expFilter == "All" or s.ClassName == expFilter then
+                        visited[s] = true
+                        table.insert(scripts, s)
+                    end
+                end
+            end
+        end
+    end)
+    pcall(function()
+        if getloadedmodules then
+            for _, s in ipairs(getloadedmodules()) do
+                if not visited[s] then
+                    if expFilter == "All" or expFilter == "ModuleScript" then
+                        visited[s] = true
+                        table.insert(scripts, s)
+                    end
+                end
+            end
+        end
+    end)
+    pcall(function()
+        if getnilinstances then
+            for _, i2 in ipairs(getnilinstances()) do
+                if not visited[i2] and (i2:IsA("LocalScript") or i2:IsA("ModuleScript")) then
+                    if expFilter == "All" or i2.ClassName == expFilter then
+                        visited[i2] = true
+                        table.insert(scripts, i2)
+                    end
+                end
+            end
+        end
+    end)
+    filter = filter and string.lower(filter) or ""
+    local count = 0
+    for _, scr in ipairs(scripts) do
+        local fn = scr:GetFullName()
+        if filter == "" or string.find(string.lower(fn), filter, 1, true) or string.find(string.lower(scr.Name), filter, 1, true) then
+            count = count + 1
+            local icon = scr:IsA("LocalScript") and "📜 " or "📦 "
+            local extra = ""
+            pcall(function() if scr:IsA("LocalScript") and scr.Disabled then extra = " ⏸" end end)
+            local running = ""
+            pcall(function()
+                if getrunningscripts then
+                    for _, rs in ipairs(getrunningscripts()) do
+                        if rs == scr then running = " ▶"; break end
+                    end
+                end
+            end)
+            local btn = inst("TextButton", {
+                Size=UDim2.new(1,-6,0,24), BackgroundColor3=TC.surface,
+                BackgroundTransparency=0.5, Text=icon..fn..extra..running,
+                TextColor3=scr:IsA("LocalScript") and TC.accentBright or TC.builtinColor,
+                TextSize=10, Font=Enum.Font.Code, TextXAlignment=Enum.TextXAlignment.Left,
+                TextTruncate=Enum.TextTruncate.AtEnd, AutoButtonColor=false,
+                ZIndex=17, Parent=ExpScroll,
+            })
+            corner(btn, 4); pad(btn, 6, 6, 0, 0)
+            btn.MouseButton1Click:Connect(function()
+                local rel = string.gsub(fn, "^Players%."..Player.Name.."%.", "")
+                PathInput.Text = rel
+                activeTab = "Editor"
+                for n, f in pairs(tabFrames) do f.Visible = n == "Editor" end
+                for n, tb in pairs(tabButtons) do
+                    TweenService:Create(tb, TweenInfo.new(0.2), {BackgroundTransparency = n == "Editor" and 0.25 or 0.7, TextColor3 = n == "Editor" and TC.textPrimary or TC.textSecondary}):Play()
+                end
+            end)
+            btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundTransparency=0.2}):Play() end)
+            btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundTransparency=0.5}):Play() end)
+        end
+    end
+    ExpCountLabel.Text = count .. " scripts found"
+end
+
+RefreshBtn.MouseButton1Click:Connect(function() populateExplorer(ExpSearchBox.Text) end)
+ExpSearchBox:GetPropertyChangedSignal("Text"):Connect(function() populateExplorer(ExpSearchBox.Text) end)
+
+local ConsoleTab = inst("Frame", {Name="ConsoleTab", Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, ZIndex=15, Visible=false, Parent=ContentArea})
+
+local ConsoleScroll = inst("ScrollingFrame", {
+    Size=UDim2.new(1,0,1,-38), BackgroundColor3=TC.void,
+    BorderSizePixel=0, ScrollBarThickness=5, ScrollBarImageColor3=TC.scrollbar,
+    CanvasSize=UDim2.new(0,0,0,0), AutomaticCanvasSize=Enum.AutomaticSize.Y,
+    ZIndex=16, Parent=ConsoleTab,
+})
+corner(ConsoleScroll, 6); stroke(ConsoleScroll, TC.borderDim, 1, 0.4)
+inst("UIListLayout", {SortOrder=Enum.SortOrder.LayoutOrder, Padding=UDim.new(0,1), Parent=ConsoleScroll})
+
+local ConsoleCmdFrame = inst("Frame", {
+    Size=UDim2.new(1,0,0,30), Position=UDim2.new(0,0,1,-32),
+    BackgroundTransparency=1, ZIndex=16, Parent=ConsoleTab,
+})
+
+local ConsoleCmdBox = inst("TextBox", {
+    Size=UDim2.new(1,-110,0,28), BackgroundColor3=TC.surface,
+    Text="", PlaceholderText="Lua > ", PlaceholderColor3=TC.textDim,
+    TextColor3=TC.textCode, TextSize=12, Font=Enum.Font.Code,
+    TextXAlignment=Enum.TextXAlignment.Left, ClearTextOnFocus=false,
+    ZIndex=17, Parent=ConsoleCmdFrame,
+})
+corner(ConsoleCmdBox, 6); stroke(ConsoleCmdBox, TC.borderDim, 1, 0.4); pad(ConsoleCmdBox, 8, 8, 0, 0)
+
+local ConsoleRunBtn = inst("TextButton", {
+    Size=UDim2.new(0,50,0,28), Position=UDim2.new(1,-105,0,0),
+    BackgroundColor3=TC.accentDim, Text="▶ Run",
+    TextColor3=TC.textPrimary, TextSize=10, Font=Enum.Font.GothamBold,
+    AutoButtonColor=false, ZIndex=17, Parent=ConsoleCmdFrame,
+})
+corner(ConsoleRunBtn, 6); ripple(ConsoleRunBtn)
+
+local ConsoleClearBtn = inst("TextButton", {
+    Size=UDim2.new(0,50,0,28), Position=UDim2.new(1,-52,0,0),
+    BackgroundColor3=TC.red, Text="Clear",
+    TextColor3=TC.textPrimary, TextSize=10, Font=Enum.Font.GothamBold,
+    AutoButtonColor=false, ZIndex=17, Parent=ConsoleCmdFrame,
+})
+corner(ConsoleClearBtn, 6); ripple(ConsoleClearBtn)
+
+local consoleOrder = 0
+local consoleHistory = {}
+local historyIndex = 0
+
+local function addConsoleLine(text, color, prefix)
+    consoleOrder = consoleOrder + 1
+    local l = inst("TextLabel", {
+        Size=UDim2.new(1,-8,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+        BackgroundTransparency=consoleOrder%2==0 and 0.92 or 1,
+        BackgroundColor3=TC.surface,
+        Text=(prefix or os.date("[%H:%M:%S] "))..tostring(text),
+        TextColor3=color or TC.textCode, TextSize=11, Font=Enum.Font.Code,
+        TextXAlignment=Enum.TextXAlignment.Left, TextWrapped=true,
+        LayoutOrder=consoleOrder, ZIndex=17, RichText=false, Parent=ConsoleScroll,
+    })
+    pad(l, 6, 6, 2, 2)
+    task.defer(function()
+        ConsoleScroll.CanvasPosition = Vector2.new(0, ConsoleScroll.AbsoluteCanvasSize.Y)
+    end)
+end
+
+ConsoleClearBtn.MouseButton1Click:Connect(function()
+    for _, c in ipairs(ConsoleScroll:GetChildren()) do
+        if c:IsA("TextLabel") then c:Destroy() end
+    end
+    consoleOrder = 0
+end)
+
+pcall(function()
+    ScriptContext.Error:Connect(function(msg, trace, scr)
+        addConsoleLine("ERROR: "..tostring(msg), TC.error)
+        if trace and trace ~= "" then addConsoleLine("  "..tostring(trace), Color3.fromRGB(180,80,80)) end
+    end)
+end)
+
+pcall(function()
+    if game:GetService("LogService") then
+        game:GetService("LogService").MessageOut:Connect(function(msg, msgType)
+            if msgType == Enum.MessageType.MessageOutput then
+                addConsoleLine(msg, TC.textCode, "[OUT] ")
+            elseif msgType == Enum.MessageType.MessageWarning then
+                addConsoleLine(msg, TC.warning, "[WRN] ")
+            elseif msgType == Enum.MessageType.MessageError then
+                addConsoleLine(msg, TC.error, "[ERR] ")
+            elseif msgType == Enum.MessageType.MessageInfo then
+                addConsoleLine(msg, TC.info, "[INF] ")
+            end
+        end)
+    end
+end)
+
+ConsoleRunBtn.MouseButton1Click:Connect(function()
+    local cmd = ConsoleCmdBox.Text
+    if cmd == "" then return end
+    table.insert(consoleHistory, cmd)
+    historyIndex = #consoleHistory + 1
+    addConsoleLine("> "..cmd, TC.accentBright)
+    local fn, err = loadstring(cmd)
+    if fn then
+        local results = {pcall(fn)}
+        local ok = table.remove(results, 1)
+        if ok then
+            if #results > 0 then
+                local parts = {}
+                for _, v in ipairs(results) do table.insert(parts, tostring(v)) end
+                addConsoleLine("= "..table.concat(parts, ", "), TC.success)
+            else
+                addConsoleLine("OK", TC.success)
+            end
+        else
+            addConsoleLine("Runtime: "..tostring(results[1]), TC.error)
+        end
+    else
+        addConsoleLine("Syntax: "..tostring(err), TC.error)
+    end
+    ConsoleCmdBox.Text = ""
+end)
+
+ConsoleCmdBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then ConsoleRunBtn.MouseButton1Click:Fire() end
+end)
+
+local EnvSpyTab = inst("Frame", {Name="EnvSpyTab", Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, ZIndex=15, Visible=false, Parent=ContentArea})
+
+local EnvPathInput = inst("TextBox", {
+    Size=UDim2.new(1,-75,0,28), BackgroundColor3=TC.surface,
+    Text="", PlaceholderText="Script path to spy env...",
+    PlaceholderColor3=TC.textDim, TextColor3=TC.success,
+    TextSize=11, Font=Enum.Font.Code, TextXAlignment=Enum.TextXAlignment.Left,
+    ClearTextOnFocus=false, ZIndex=16, Parent=EnvSpyTab,
+})
+corner(EnvPathInput, 6); stroke(EnvPathInput, TC.borderDim, 1, 0.4); pad(EnvPathInput, 8, 8, 0, 0)
+
+local EnvSpyBtn = inst("TextButton", {
+    Size=UDim2.new(0,70,0,28), Position=UDim2.new(1,-70,0,0),
+    BackgroundColor3=TC.accentDim, Text="🔎 Spy",
+    TextColor3=TC.textPrimary, TextSize=10, Font=Enum.Font.GothamBold,
+    AutoButtonColor=false, ZIndex=16, Parent=EnvSpyTab,
+})
+corner(EnvSpyBtn, 6); ripple(EnvSpyBtn)
+
+local EnvScroll = inst("ScrollingFrame", {
+    Size=UDim2.new(1,0,1,-36), Position=UDim2.new(0,0,0,32),
+    BackgroundColor3=TC.void, BorderSizePixel=0, ScrollBarThickness=5,
+    ScrollBarImageColor3=TC.scrollbar, CanvasSize=UDim2.new(0,0,0,0),
+    AutomaticCanvasSize=Enum.AutomaticSize.Y, ZIndex=16, Parent=EnvSpyTab,
+})
+corner(EnvScroll, 6); stroke(EnvScroll, TC.borderDim, 1, 0.4)
+inst("UIListLayout", {SortOrder=Enum.SortOrder.Name, Padding=UDim.new(0,2), Parent=EnvScroll})
+
+EnvSpyBtn.MouseButton1Click:Connect(function()
+    for _, c in ipairs(EnvScroll:GetChildren()) do if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end end
+    local path = EnvPathInput.Text
+    if path == "" then path = PathInput.Text end
+    if path == "" then return end
+    local scriptObj = resolveScript(path)
+    if not scriptObj then
+        inst("TextLabel", {Size=UDim2.new(1,0,0,20), BackgroundTransparency=1, Text="Script not found", TextColor3=TC.error, TextSize=11, Font=Enum.Font.Code, ZIndex=17, Parent=EnvScroll})
+        return
+    end
+    local env
+    pcall(function()
+        if getsenv then env = getsenv(scriptObj) end
+    end)
+    if not env then
+        inst("TextLabel", {Size=UDim2.new(1,0,0,20), BackgroundTransparency=1, Text="Cannot get env (getsenv unavailable)", TextColor3=TC.error, TextSize=11, Font=Enum.Font.Code, ZIndex=17, Parent=EnvScroll})
+        return
+    end
+    local sorted = {}
+    for k, v in pairs(env) do table.insert(sorted, {key=tostring(k), val=tostring(v), typ=type(v)}) end
+    table.sort(sorted, function(a,b) return a.key < b.key end)
+    for _, entry in ipairs(sorted) do
+        local typeColor = TC.textCode
+        if entry.typ == "function" then typeColor = TC.funcColor
+        elseif entry.typ == "table" then typeColor = TC.tableColor
+        elseif entry.typ == "string" then typeColor = TC.strColor
+        elseif entry.typ == "number" then typeColor = TC.numColor
+        elseif entry.typ == "boolean" then typeColor = TC.boolColor
+        elseif entry.typ == "userdata" then typeColor = TC.builtinColor end
+        local btn = inst("TextButton", {
+            Size=UDim2.new(1,-6,0,22), BackgroundColor3=TC.surface,
+            BackgroundTransparency=0.6,
+            Text="["..entry.typ.."] "..entry.key.." = "..string.sub(entry.val, 1, 80),
+            TextColor3=typeColor, TextSize=10, Font=Enum.Font.Code,
+            TextXAlignment=Enum.TextXAlignment.Left, TextTruncate=Enum.TextTruncate.AtEnd,
+            AutoButtonColor=false, ZIndex=17, Parent=EnvScroll,
+        })
+        corner(btn, 4); pad(btn, 6, 6, 0, 0)
+        btn.MouseButton1Click:Connect(function()
+            pcall(function() if setclipboard then setclipboard(entry.key.." = "..entry.val) end end)
+        end)
+        btn.MouseEnter:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundTransparency=0.2}):Play() end)
+        btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundTransparency=0.6}):Play() end)
+    end
+end)
+
+local SettingsTab = inst("Frame", {Name="SettingsTab", Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, ZIndex=15, Visible=false, Parent=ContentArea})
+
+local setScroll = inst("ScrollingFrame", {
+    Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, BorderSizePixel=0,
+    ScrollBarThickness=5, ScrollBarImageColor3=TC.scrollbar,
+    CanvasSize=UDim2.new(0,0,0,0), AutomaticCanvasSize=Enum.AutomaticSize.Y,
+    ZIndex=16, Parent=SettingsTab,
+})
+inst("UIListLayout", {SortOrder=Enum.SortOrder.LayoutOrder, Padding=UDim.new(0,5), Parent=setScroll})
+
+local function settingSection(text, order)
+    local l = inst("TextLabel", {
+        Size=UDim2.new(1,0,0,20), BackgroundTransparency=1,
+        Text="── "..text.." ──", TextColor3=TC.accentBright,
+        TextSize=11, Font=Enum.Font.GothamBold,
+        LayoutOrder=order, ZIndex=18, Parent=setScroll,
+    })
+end
+
+local function settingToggle(name, label, order, default, callback)
+    local f = inst("Frame", {Size=UDim2.new(1,0,0,30), BackgroundColor3=TC.surface, BackgroundTransparency=0.5, LayoutOrder=order, ZIndex=17, Parent=setScroll})
+    corner(f, 6)
+    inst("TextLabel", {Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, Text=label, TextColor3=TC.textPrimary, TextSize=11, Font=Enum.Font.GothamSemibold, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=18, Parent=f})
+    local tf = inst("Frame", {Size=UDim2.new(0,40,0,20), Position=UDim2.new(1,-50,0.5,-10), BackgroundColor3=default and TC.accent or Color3.fromRGB(45,45,45), ZIndex=18, Parent=f})
+    corner(tf, 10)
+    local knob = inst("Frame", {Size=UDim2.new(0,16,0,16), Position=default and UDim2.new(1,-18,0,2) or UDim2.new(0,2,0,2), BackgroundColor3=Color3.fromRGB(255,255,255), ZIndex=19, Parent=tf})
+    corner(knob, 8)
+    local state = default
+    inst("TextButton", {Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", ZIndex=20, Parent=f}).MouseButton1Click:Connect(function()
+        state = not state
+        Settings[name] = state
+        TweenService:Create(tf, TweenInfo.new(0.2), {BackgroundColor3=state and TC.accent or Color3.fromRGB(45,45,45)}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.2, Enum.EasingStyle.Back), {Position=state and UDim2.new(1,-18,0,2) or UDim2.new(0,2,0,2)}):Play()
+        if callback then callback(state) end
+    end)
+end
+
+settingSection("Editor", 0)
+settingToggle("syntaxHL", "Syntax Highlighting", 1, true, function(v)
+    if v then updateSyntax() else HLLabel.Text = "" end
+end)
+settingToggle("autoSave", "Auto-Save on Apply", 2, false)
+settingToggle("wrapText", "Word Wrap", 3, true, function(v)
+    CodeInput.TextWrapped = v
+    HLLabel.TextWrapped = v
+end)
+settingToggle("autoIndent", "Auto Indent", 4, true)
+
+settingSection("Appearance", 10)
+
+local fontFrame = inst("Frame", {Size=UDim2.new(1,0,0,30), BackgroundColor3=TC.surface, BackgroundTransparency=0.5, LayoutOrder=11, ZIndex=17, Parent=setScroll})
+corner(fontFrame, 6)
+inst("TextLabel", {Size=UDim2.new(0.5,0,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, Text="Font Size", TextColor3=TC.textPrimary, TextSize=11, Font=Enum.Font.GothamSemibold, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=18, Parent=fontFrame})
+
+local fontSizeDisplay = inst("TextLabel", {
+    Size=UDim2.new(0,30,0,20), Position=UDim2.new(1,-90,0.5,-10),
+    BackgroundTransparency=1, Text=tostring(Settings.fontSize),
+    TextColor3=TC.accentBright, TextSize=12, Font=Enum.Font.GothamBold,
+    ZIndex=18, Parent=fontFrame,
+})
+
+local function fontBtn(txt, pos, delta)
+    local b = inst("TextButton", {Size=UDim2.new(0,24,0,24), Position=pos, BackgroundColor3=TC.accentDim, Text=txt, TextColor3=TC.textPrimary, TextSize=14, Font=Enum.Font.GothamBold, AutoButtonColor=false, ZIndex=18, Parent=fontFrame})
+    corner(b, 6); ripple(b)
+    b.MouseButton1Click:Connect(function()
+        Settings.fontSize = math.clamp(Settings.fontSize + delta, 8, 26)
+        CodeInput.TextSize = Settings.fontSize
+        HLLabel.TextSize = Settings.fontSize
+        LineNumText.TextSize = Settings.fontSize
+        fontSizeDisplay.Text = tostring(Settings.fontSize)
+        updateSyntax()
+    end)
+end
+fontBtn("-", UDim2.new(1,-58,0.5,-12), -1)
+fontBtn("+", UDim2.new(1,-30,0.5,-12), 1)
+
+local opFrame = inst("Frame", {Size=UDim2.new(1,0,0,30), BackgroundColor3=TC.surface, BackgroundTransparency=0.5, LayoutOrder=12, ZIndex=17, Parent=setScroll})
+corner(opFrame, 6)
+inst("TextLabel", {Size=UDim2.new(0.4,0,1,0), Position=UDim2.new(0,10,0,0), BackgroundTransparency=1, Text="BG Opacity", TextColor3=TC.textPrimary, TextSize=11, Font=Enum.Font.GothamSemibold, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=18, Parent=opFrame})
+
+local opTrack = inst("Frame", {Size=UDim2.new(0.5,-10,0,6), Position=UDim2.new(0.4,5,0.5,-3), BackgroundColor3=TC.panel, ZIndex=18, Parent=opFrame})
+corner(opTrack, 3)
+local opFill = inst("Frame", {Size=UDim2.new(0,0,1,0), BackgroundColor3=TC.accent, ZIndex=19, Parent=opTrack})
+corner(opFill, 3)
+local opKnob = inst("TextButton", {Size=UDim2.new(0,14,0,14), Position=UDim2.new(0,-7,0.5,-7), BackgroundColor3=TC.accentBright, Text="", ZIndex=20, Parent=opTrack})
+corner(opKnob, 7)
+
+local opDrag = false
+opKnob.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then opDrag=true end end)
+UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then opDrag=false end end)
+UserInputService.InputChanged:Connect(function(i)
+    if opDrag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+        local rel = math.clamp((i.Position.X - opTrack.AbsolutePosition.X) / opTrack.AbsoluteSize.X, 0, 1)
+        opKnob.Position = UDim2.new(rel, -7, 0.5, -7)
+        opFill.Size = UDim2.new(rel, 0, 1, 0)
+        MainFrame.BackgroundTransparency = rel * 0.7
+        Settings.opacity = rel
+    end
+end)
+
+settingSection("Danger Zone", 20)
+
+local destroyBtn = inst("TextButton", {
+    Size=UDim2.new(1,0,0,30), BackgroundColor3=TC.red, Text="🗑 Destroy Editor GUI",
+    TextColor3=TC.textPrimary, TextSize=12, Font=Enum.Font.GothamBold,
+    AutoButtonColor=false, LayoutOrder=21, ZIndex=18, Parent=setScroll,
+})
+corner(destroyBtn, 6); ripple(destroyBtn)
+destroyBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
+
+local featureList = inst("TextLabel", {
+    Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+    BackgroundTransparency=1,
+    Text="Available APIs: "..
+    (decompile and "✅ decompile " or "❌ decompile ")..
+    (getsenv and "✅ getsenv " or "❌ getsenv ")..
+    (getscripts and "✅ getscripts " or "❌ getscripts ")..
+    (hookfunction and "✅ hookfunction " or "❌ hookfunction ")..
+    (writefile and "✅ writefile " or "❌ writefile ")..
+    (setclipboard and "✅ clipboard " or "❌ clipboard ")..
+    (getscriptclosure and "✅ getscriptclosure " or "❌ getscriptclosure ")..
+    (replaceclosure and "✅ replaceclosure " or "❌ replaceclosure ")..
+    (getnilinstances and "✅ getnilinstances " or "❌ getnilinstances ")..
+    (loadstring and "✅ loadstring " or "❌ loadstring ")..
+    (getscriptbytecode and "✅ getscriptbytecode " or "❌ getscriptbytecode ")..
+    (newcclosure and "✅ newcclosure " or "❌ newcclosure "),
+    TextColor3=TC.textSecondary, TextSize=9, Font=Enum.Font.Code,
+    TextWrapped=true, LayoutOrder=30, ZIndex=18, Parent=setScroll,
+})
+
+tabFrames = {
+    Editor = EditorTab,
+    Explorer = ExplorerTab,
+    Console = ConsoleTab,
+    ["Env Spy"] = EnvSpyTab,
+    Settings = SettingsTab,
+}
+
+for name, btn in pairs(tabButtons) do
+    btn.MouseButton1Click:Connect(function()
+        activeTab = name
+        for n, f in pairs(tabFrames) do
+            if f then f.Visible = n == name end
+        end
+        for n, tb in pairs(tabButtons) do
+            TweenService:Create(tb, TweenInfo.new(0.2), {
+                BackgroundTransparency = n == name and 0.25 or 0.7,
+                TextColor3 = n == name and TC.textPrimary or TC.textSecondary,
+            }):Play()
+        end
+        if name == "Explorer" then populateExplorer(ExpSearchBox.Text) end
+    end)
+end
+
+local function setStatus(msg, color)
+    StatusLabel.Text = msg
+    StatusLabel.TextColor3 = color or TC.success
+    task.defer(function()
+        task.wait(7)
+        if StatusLabel.Text == msg then
+            StatusLabel.Text = "Ready"
+            StatusLabel.TextColor3 = TC.success
+        end
+    end)
+end
+
+function resolveScript(path)
+    path = string.gsub(path, "^%s+", "")
+    path = string.gsub(path, "%s+$", "")
+    local roots = {
+        {Player, path},
+        {game, path},
+        {game:GetService("ReplicatedStorage"), path},
+        {game:GetService("ReplicatedFirst"), path},
+        {game:GetService("StarterPlayer"), path},
+    }
+    for _, combo in ipairs(roots) do
+        local root, p = combo[1], combo[2]
+        local parts = string.split(p, ".")
+        local current = root
+        local found = true
+        for _, part in ipairs(parts) do
+            part = string.gsub(part, "^%s+", "")
+            part = string.gsub(part, "%s+$", "")
+            if part ~= "" then
+                local child = current:FindFirstChild(part)
+                if not child then
+                    for _, c in ipairs(current:GetChildren()) do
+                        if string.lower(c.Name) == string.lower(part) then child = c; break end
+                    end
+                end
+                if not child then
+                    pcall(function()
+                        child = current:FindFirstChild(part, true)
+                    end)
+                end
+                if child then current = child else found = false; break end
+            end
+        end
+        if found and current ~= root then return current end
+    end
+    pcall(function()
+        if getnilinstances then
+            for _, i2 in ipairs(getnilinstances()) do
+                if string.find(i2:GetFullName(), path, 1, true) or i2.Name == path then
+                    return i2
+                end
+            end
+        end
+    end)
+    pcall(function()
+        if getscripts then
+            for _, s in ipairs(getscripts()) do
+                if string.find(s:GetFullName(), path, 1, true) or s.Name == path then
+                    return s
+                end
+            end
+        end
+    end)
+    return nil, "Script not found: "..path
+end
+
+local function getSource(obj)
+    if not obj then return nil end
+    local src
+    pcall(function() if decompile then src = decompile(obj) end end)
+    if src and src ~= "" and not string.find(src, "failed") then return src, "decompile" end
+    pcall(function()
+        if getscriptclosure and decompile then
+            local cl = getscriptclosure(obj)
+            if cl then src = decompile(cl) end
+        end
+    end)
+    if src and src ~= "" then return src, "closure+decompile" end
+    pcall(function()
+        if obj:IsA("ModuleScript") then
+            local ok, result = pcall(require, obj)
+            if ok then
+                src = "-- Module return value:\n-- Type: "..type(result).."\n"
+                if type(result) == "table" then
+                    for k, v in pairs(result) do
+                        src = src.."-- ["..tostring(k).."] = "..tostring(v).." ("..type(v)..")\n"
+                    end
+                else
+                    src = src.."-- Value: "..tostring(result)
+                end
+            end
+        end
+    end)
+    if src and src ~= "" then return src, "require" end
+    pcall(function()
+        if getsenv then
+            local env = getsenv(obj)
+            if env then
+                src = "-- Environment dump (getsenv):\n"
+                local sorted = {}
+                for k, v in pairs(env) do table.insert(sorted, {k=tostring(k), v=tostring(v), t=type(v)}) end
+                table.sort(sorted, function(a,b) return a.k < b.k end)
+                for _, e in ipairs(sorted) do
+                    src = src..e.k.." ["..e.t.."] = "..string.sub(e.v, 1, 200).."\n"
+                end
+            end
+        end
+    end)
+    if src and src ~= "" then return src, "getsenv" end
+    pcall(function()
+        if getscriptbytecode then
+            local bc = getscriptbytecode(obj)
+            if bc then src = "-- Bytecode ("..#bc.." bytes)\n-- Raw decompiler unavailable\n-- Hash: "..(getscripthash and getscripthash(obj) or "N/A") end
+        end
+    end)
+    if src and src ~= "" then return src, "bytecode" end
+    pcall(function() src = obj.Source end)
+    if src then return src, "Source property" end
+    return nil, nil
+end
+
+local function applySource(obj, newSrc)
+    if not obj then return false, "No script" end
+    pcall(function() if setscriptable then setscriptable(obj, "Source", true) end end)
+    local ok = pcall(function() obj.Source = newSrc end)
+    if ok then return true, "Source property" end
+    local success, method = false, ""
+    pcall(function()
+        if setsource then setsource(obj, newSrc); success = true; method = "setsource" end
+    end)
+    if success then return true, method end
+    pcall(function()
+        if replaceclosure and getscriptclosure then
+            local old = getscriptclosure(obj)
+            if old then
+                local new = loadstring(newSrc)
+                if new then
+                    replaceclosure(old, newcclosure and newcclosure(new) or new)
+                    success = true; method = "replaceclosure"
+                end
+            end
+        end
+    end)
+    if success then return true, method end
+    pcall(function()
+        if hookfunction and getscriptclosure then
+            local old = getscriptclosure(obj)
+            if old then
+                local new = loadstring(newSrc)
+                if new then
+                    hookfunction(old, newcclosure and newcclosure(new) or new)
+                    success = true; method = "hookfunction"
+                end
+            end
+        end
+    end)
+    if success then return true, method end
+    pcall(function()
+        if loadstring then
+            local fn, err = loadstring(newSrc)
+            if fn then
+                if getsenv then
+                    local env = getsenv(obj)
+                    if env and setfenv then
+                        setfenv(fn, setmetatable(env, {__index = getfenv(0)}))
+                    end
+                end
+                pcall(function() obj.Disabled = true end)
+                task.defer(fn)
+                success = true; method = "loadstring (original disabled)"
+            end
+        end
+    end)
+    if success then return true, method end
+    pcall(function() if setclipboard then setclipboard(newSrc) end end)
+    return false, "All methods failed. Clipboard updated if available."
+end
+
+local undoStack, redoStack = {}, {}
+local maxHistory = 100
+
+local function pushUndo()
+    local t = CodeInput.Text
+    if #undoStack > 0 and undoStack[#undoStack] == t then return end
+    table.insert(undoStack, t)
+    if #undoStack > maxHistory then table.remove(undoStack, 1) end
+    redoStack = {}
+end
+
+local lastText = ""
+local autoSaveTimer = 0
+CodeInput:GetPropertyChangedSignal("Text"):Connect(function()
+    local current = CodeInput.Text
+    if current ~= lastText then
+        if tick() - autoSaveTimer > 2 then
+            pushUndo()
+            autoSaveTimer = tick()
+        end
+        lastText = current
+    end
+end)
+
+CodeInput.Focused:Connect(pushUndo)
+
+UndoBtn.MouseButton1Click:Connect(function()
+    if #undoStack > 0 then
+        table.insert(redoStack, CodeInput.Text)
+        CodeInput.Text = table.remove(undoStack)
+        updateSyntax()
+        setStatus("Undo ("..#undoStack.." left)", TC.warning)
+    else
+        setStatus("Nothing to undo", TC.textDim)
+    end
+end)
+
+LoadBtn.MouseButton1Click:Connect(function()
+    local path = PathInput.Text
+    if path == "" then setStatus("Enter script path", TC.error); return end
+    setStatus("Loading...", TC.warning)
+    local obj, err = resolveScript(path)
+    if not obj then setStatus(err or "Not found", TC.error); return end
+    if not (obj:IsA("LocalScript") or obj:IsA("ModuleScript") or obj:IsA("Script")) then
+        setStatus("Not a script: "..obj.ClassName, TC.error); return
+    end
+    ScriptInfoLabel.Text = obj.ClassName.." | "..obj.Name
+    local source, method = getSource(obj)
+    if source then
+        pushUndo()
+        CodeInput.Text = source
+        updateSyntax()
+        setStatus("Loaded via "..tostring(method)..": "..obj.Name, TC.success)
+        addConsoleLine("Loaded: "..obj:GetFullName().." via "..tostring(method), TC.success)
+    else
+        setStatus("Cannot retrieve source", TC.error)
+    end
+end)
+
+ApplyBtn.MouseButton1Click:Connect(function()
+    local path = PathInput.Text
+    if path == "" then setStatus("Enter script path", TC.error); return end
+    local newSrc = CodeInput.Text
+    if newSrc == "" then setStatus("No code", TC.error); return end
+    setStatus("Applying...", TC.warning)
+    local obj, err = resolveScript(path)
+    if not obj then setStatus(err or "Not found", TC.error); return end
+    local ok, method = applySource(obj, newSrc)
+    setStatus(ok and ("Applied via "..method) or method, ok and TC.success or TC.error)
+    addConsoleLine((ok and "Applied" or "Failed")..": "..obj:GetFullName().." | "..method, ok and TC.success or TC.error)
+    if ok and Settings.autoSave then
+        pcall(function() if writefile then writefile("LSE_auto_"..obj.Name..".lua", newSrc) end end)
+    end
+end)
+
+DecompBtn.MouseButton1Click:Connect(function()
+    local path = PathInput.Text
+    if path == "" then setStatus("Enter script path", TC.error); return end
+    setStatus("Decompiling...", TC.warning)
+    local obj, err = resolveScript(path)
+    if not obj then setStatus(err or "Not found", TC.error); return end
+    local source, method
+    pcall(function() if decompile then source = decompile(obj); method = "decompile" end end)
+    if not source then
+        pcall(function()
+            if getscriptclosure and decompile then
+                source = decompile(getscriptclosure(obj)); method = "closure decompile"
+            end
+        end)
+    end
+    if source then
+        pushUndo()
+        CodeInput.Text = source
+        updateSyntax()
+        setStatus("Decompiled via "..tostring(method), TC.success)
+    else
+        setStatus("Decompiler unavailable", TC.error)
+    end
+end)
+
+ExecBtn.MouseButton1Click:Connect(function()
+    local code = CodeInput.Text
+    if code == "" then setStatus("No code", TC.error); return end
+    setStatus("Executing...", TC.warning)
+    local fn, err = loadstring(code)
+    if fn then
+        local results = {pcall(fn)}
+        local ok = table.remove(results, 1)
+        if ok then
+            setStatus("Executed OK", TC.success)
+            addConsoleLine("Executed code block successfully", TC.success)
+        else
+            setStatus("Runtime: "..tostring(results[1]), TC.error)
+            addConsoleLine("Runtime: "..tostring(results[1]), TC.error)
+        end
+    else
+        setStatus("Syntax: "..tostring(err), TC.error)
+        addConsoleLine("Syntax: "..tostring(err), TC.error)
+    end
+end)
+
+InjectBtn.MouseButton1Click:Connect(function()
+    local code = CodeInput.Text
+    if code == "" then setStatus("No code to inject", TC.error); return end
+    setStatus("Injecting...", TC.warning)
+    local fn, err = loadstring(code)
+    if fn then
+        local env = {}
+        pcall(function()
+            if getgenv then
+                env = getgenv()
+            end
+        end)
+        if setfenv then
+            pcall(function()
+                setfenv(fn, setmetatable({}, {__index = function(_, k)
+                    if env[k] ~= nil then return env[k] end
+                    return getfenv(0)[k]
+                end, __newindex = function(_, k, v)
+                    env[k] = v
+                end}))
+            end)
+        end
+        local ok, result = pcall(fn)
+        if ok then
+            setStatus("Injected successfully", TC.success)
+            addConsoleLine("Injected code into global env", TC.success)
+        else
+            setStatus("Inject runtime: "..tostring(result), TC.error)
+        end
+    else
+        setStatus("Inject syntax: "..tostring(err), TC.error)
+    end
+end)
+
+SaveBtn.MouseButton1Click:Connect(function()
+    local src = CodeInput.Text
+    if src == "" then setStatus("Nothing to save", TC.error); return end
+    local saved = false
+    pcall(function()
+        if writefile then
+            local name = "LSE_"..os.date("%Y%m%d_%H%M%S")..".lua"
+            writefile(name, src)
+            setStatus("Saved: "..name, TC.success)
+            saved = true
+        end
+    end)
+    if not saved then
+        pcall(function()
+            if setclipboard then setclipboard(src); setStatus("Copied to clipboard", TC.warning); saved = true end
+        end)
+    end
+    if not saved then setStatus("No save API", TC.error) end
+end)
+
+ClipBtn.MouseButton1Click:Connect(function()
+    local src = CodeInput.Text
+    if src == "" then setStatus("Nothing to copy", TC.error); return end
+    local ok = false
+    pcall(function() if setclipboard then setclipboard(src); ok = true end end)
+    pcall(function() if toclipboard and not ok then toclipboard(src); ok = true end end)
+    setStatus(ok and "Copied!" or "Clipboard unavailable", ok and TC.success or TC.error)
+end)
+
+ClearBtn.MouseButton1Click:Connect(function()
+    pushUndo()
+    CodeInput.Text = ""
+    updateSyntax()
+    setStatus("Cleared", TC.warning)
+end)
+
+local guiVisible, animating = false, false
+
+local function toggleGui()
+    if animating then return end
+    animating = true
+    guiVisible = not guiVisible
+    if guiVisible then
+        MainFrame.Visible = true
+        MainFrame.Size = UDim2.new(0, 440, 0, 0)
+        MainFrame.BackgroundTransparency = 1
+        local tw = TweenService:Create(MainFrame, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, 440, 0, 530),
+            BackgroundTransparency = Settings.opacity * 0.7
+        })
+        tw:Play()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {Rotation = 180}):Play()
+        tw.Completed:Connect(function() animating = false end)
+    else
+        local tw = TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = UDim2.new(0, 440, 0, 0), BackgroundTransparency = 1
+        })
+        tw:Play()
+        TweenService:Create(ToggleButton, TweenInfo.new(0.3), {Rotation = 0}):Play()
+        tw.Completed:Connect(function() MainFrame.Visible = false; animating = false end)
+    end
+end
+
+ToggleButton.MouseButton1Click:Connect(toggleGui)
+CloseBtn.MouseButton1Click:Connect(function()
+    if not pinned then
+        if guiVisible then guiVisible = true; toggleGui() end
+    end
+end)
+
+local minimized, savedSize = false, nil
+MinBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        savedSize = MainFrame.Size
+        TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {Size = UDim2.new(0, MainFrame.Size.X.Offset, 0, 40)}):Play()
+        ContentArea.Visible = false; TabBar.Visible = false; MinBtn.Text = "□"
+    else
+        ContentArea.Visible = true; TabBar.Visible = true
+        TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {Size = savedSize or UDim2.new(0, 440, 0, 530)}):Play()
+        MinBtn.Text = "─"
+    end
+end)
+
+task.defer(function()
+    local r = 0
+    while ScreenGui and ScreenGui.Parent do
+        r = (r + 0.15) % 360
+        mainGrad.Rotation = r
+        task.wait(0.04)
+    end
+end)
+
+task.defer(function()
+    local h = 0
+    local bs = MainFrame:FindFirstChildWhichIsA("UIStroke")
+    local ts = ToggleButton:FindFirstChildWhichIsA("UIStroke")
+    while ScreenGui and ScreenGui.Parent do
+        h = (h + 0.002) % 1
+        if bs then bs.Color = Color3.fromHSV(h, 0.5, 0.7) end
+        if ts then ts.Color = Color3.fromHSV((h+0.25)%1, 0.6, 0.85) end
+        task.wait(0.04)
+    end
+end)
+
+task.defer(function()
+    while ScreenGui and ScreenGui.Parent do
+        local h2 = (tick() * 0.02) % 1
+        for _, child in ipairs(MainFrame:GetChildren()) do
+            if child:IsA("Frame") and (string.sub(child.Name,1,1) == "S" or string.sub(child.Name,1,1) == "N") and #child.Name <= 4 then
+                pcall(function()
+                    if string.sub(child.Name,1,1) == "S" then
+                        child.BackgroundColor3 = Color3.fromHSV((h2 + math.random(0,200)/1000) % 1, 0.2 + math.random(0,30)/100, 0.85 + math.random(0,15)/100)
+                    end
+                end)
+            end
+        end
+        task.wait(4)
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.RightControl or input.KeyCode == Enum.KeyCode.F6 then
+        toggleGui()
+    end
+    if input.KeyCode == Enum.KeyCode.Z and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        if #undoStack > 0 then
+            table.insert(redoStack, CodeInput.Text)
+            CodeInput.Text = table.remove(undoStack)
+            updateSyntax()
+        end
+    end
+    if input.KeyCode == Enum.KeyCode.Y and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        if #redoStack > 0 then
+            table.insert(undoStack, CodeInput.Text)
+            CodeInput.Text = table.remove(redoStack)
+            updateSyntax()
+        end
+    end
+    if input.KeyCode == Enum.KeyCode.S and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        SaveBtn.MouseButton1Click:Fire()
+    end
+    if input.KeyCode == Enum.KeyCode.F and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        searchOpen = not searchOpen
+        SearchFrame.Visible = searchOpen
+    end
+end)
+
+if Settings.autoIndent then
+    CodeInput.FocusLost:Connect(function(enterPressed)
+        if not enterPressed or not Settings.autoIndent then return end
+        local text = CodeInput.Text
+        local lines = string.split(text, "\n")
+        if #lines < 2 then return end
+        local prevLine = lines[#lines - 1] or ""
+        local indent = string.match(prevLine, "^(%s*)") or ""
+        if string.match(prevLine, "%s*(function|if|for|while|repeat|do|else|elseif)") then
+            indent = indent .. string.rep(" ", Settings.tabSize)
+        end
+        if indent ~= "" then
+            lines[#lines] = indent .. string.gsub(lines[#lines], "^%s*", "")
+            CodeInput.Text = table.concat(lines, "\n")
+            updateSyntax()
+        end
+    end)
+end
+
+addConsoleLine("Local Script Editor v1.0 initialized", TC.accentBright)
+addConsoleLine("Tabs: Editor | Explorer | Console | Env Spy | Settings", TC.textSecondary)
+addConsoleLine("Hotkeys: RCtrl/F6=Toggle | Ctrl+Z=Undo | Ctrl+Y=Redo | Ctrl+S=Save | Ctrl+F=Find", TC.textSecondary)
+setStatus("LSE v1.0 loaded", TC.accentBright)
