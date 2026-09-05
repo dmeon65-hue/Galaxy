@@ -34,6 +34,9 @@ local ToolEvents = {}
 local ToolChains = {}
 local ToolVars = getgenv().TC_Vars or {}
 getgenv().TC_Vars = ToolVars
+local ToolSchedules = {}
+local ToolInstances = {}
+local ToolCdConns = {}
 local autoRespawnTools = true
 local logEnabled = true
 local minimized = false
@@ -42,7 +45,10 @@ local cdOverlayEnabled = true
 local particleEnabled = true
 local antiDetect = false
 local currentProfile = "Default"
-local ToolSchedules = {}
+local cdNamingEnabled = true
+local autoClearDupes = true
+local toolCreationCount = 0
+local sessionStart = tick()
 
 if Player:FindFirstChild("PlayerGui") and Player.PlayerGui:FindFirstChild("ToolsCreatorGui") then
 	Player.PlayerGui:FindFirstChild("ToolsCreatorGui"):Destroy()
@@ -91,6 +97,77 @@ local function AddLog(e)
 	if #LogEntries > 100 then table.remove(LogEntries) end
 end
 
+local function ClearDuplicateTools(toolName)
+	local bp = Player:FindFirstChild("Backpack")
+	local char = Player.Character
+	local myTool = ToolInstances[toolName]
+	if bp then
+		for _, t in pairs(bp:GetChildren()) do
+			if t:IsA("Tool") and t.Name == toolName and t ~= myTool then
+				t:Destroy()
+				AddLog("Dupe removed (BP): " .. toolName)
+			end
+		end
+	end
+	if char then
+		for _, t in pairs(char:GetChildren()) do
+			if t:IsA("Tool") and t.Name == toolName and t ~= myTool then
+				t:Destroy()
+				AddLog("Dupe removed (Char): " .. toolName)
+			end
+		end
+	end
+end
+
+local function ScanAndClearAllDupes()
+	if not autoClearDupes then return end
+	for tn, myTool in pairs(ToolInstances) do
+		if myTool and myTool.Parent then
+			ClearDuplicateTools(tn)
+		end
+	end
+	local bp = Player:FindFirstChild("Backpack")
+	local char = Player.Character
+	if bp then
+		local seen = {}
+		for _, t in pairs(bp:GetChildren()) do
+			if t:IsA("Tool") then
+				if not ActiveTools[t.Name] then
+					if seen[t.Name] then
+					else
+						seen[t.Name] = true
+					end
+				end
+			end
+		end
+	end
+end
+
+local function FindToolInstance(toolName)
+	local bp = Player:FindFirstChild("Backpack")
+	local char = Player.Character
+	if bp then
+		local t = bp:FindFirstChild(toolName)
+		if t and t:IsA("Tool") then return t end
+	end
+	if char then
+		local t = char:FindFirstChild(toolName)
+		if t and t:IsA("Tool") then return t end
+	end
+	return nil
+end
+
+local function UpdateToolCdName(toolName, remaining)
+	if not cdNamingEnabled then return end
+	local tool = FindToolInstance(toolName)
+	if not tool then return end
+	if remaining and remaining > 0 then
+		tool.Name = toolName .. " [" .. string.format("%.1f", remaining) .. "s]"
+	else
+		tool.Name = toolName
+	end
+end
+
 local NotifQueue = {}
 local NotifActive = false
 
@@ -130,17 +207,17 @@ local function Notify(msg, color)
 			nl.TextWrapped = true
 			nl.ZIndex = 201
 			if particleEnabled then
-				for i = 1, 3 do
+				for i = 1, 4 do
 					local p = Instance.new("Frame", nf)
 					p.Size = UDim2.new(0, 2, 0, 2)
-					p.Position = UDim2.new(math.random(10, 90) / 100, 0, math.random(20, 80) / 100, 0)
+					p.Position = UDim2.new(math.random(10, 90)/100, 0, math.random(20, 80)/100, 0)
 					p.BackgroundColor3 = d.color
-					p.BackgroundTransparency = 0.4
+					p.BackgroundTransparency = 0.3
 					p.BorderSizePixel = 0
 					p.ZIndex = 202
 					Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
 					task.spawn(function()
-						Tween(p, {BackgroundTransparency = 1, Position = UDim2.new(p.Position.X.Scale, 0, -0.3, 0)}, 1.2)
+						Tween(p, {BackgroundTransparency = 1, Position = UDim2.new(p.Position.X.Scale + math.random(-20, 20)/100, 0, -0.4, 0)}, 1.3)
 					end)
 				end
 			end
@@ -174,16 +251,18 @@ tgS.Thickness = 1.4
 MakeDraggable(ToggleBtn)
 
 local CdOverlay = Instance.new("Frame")
-CdOverlay.Size = UDim2.new(0, 95, 0, 18)
-CdOverlay.Position = UDim2.new(0.5, -47, 0, 2)
+CdOverlay.Size = UDim2.new(0, 100, 0, 20)
+CdOverlay.Position = UDim2.new(0.5, -50, 0, 2)
 CdOverlay.BackgroundColor3 = Color3.fromRGB(6, 1, 16)
-CdOverlay.BackgroundTransparency = 0.25
+CdOverlay.BackgroundTransparency = 0.2
 CdOverlay.BorderSizePixel = 0
 CdOverlay.ZIndex = 150
 CdOverlay.Visible = false
 CdOverlay.Parent = ScreenGui
-Instance.new("UICorner", CdOverlay).CornerRadius = UDim.new(0, 6)
-Instance.new("UIStroke", CdOverlay).Color = Color3.fromRGB(80, 40, 160)
+Instance.new("UICorner", CdOverlay).CornerRadius = UDim.new(0, 7)
+local cdStroke = Instance.new("UIStroke", CdOverlay)
+cdStroke.Color = Color3.fromRGB(80, 40, 160)
+cdStroke.Thickness = 1
 
 local CdBar = Instance.new("Frame")
 CdBar.Size = UDim2.new(0, 0, 1, 0)
@@ -191,13 +270,18 @@ CdBar.BackgroundColor3 = Color3.fromRGB(120, 60, 220)
 CdBar.BorderSizePixel = 0
 CdBar.ZIndex = 151
 CdBar.Parent = CdOverlay
-Instance.new("UICorner", CdBar).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", CdBar).CornerRadius = UDim.new(0, 7)
+local cdBarGrad = Instance.new("UIGradient", CdBar)
+cdBarGrad.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(140, 80, 240)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(80, 40, 180))
+})
 
 local CdLabel = Instance.new("TextLabel")
 CdLabel.Size = UDim2.new(1, 0, 1, 0)
 CdLabel.BackgroundTransparency = 1
 CdLabel.Text = ""
-CdLabel.TextColor3 = Color3.fromRGB(225, 205, 255)
+CdLabel.TextColor3 = Color3.fromRGB(230, 210, 255)
 CdLabel.TextSize = 8
 CdLabel.Font = Enum.Font.GothamBold
 CdLabel.ZIndex = 152
@@ -212,12 +296,12 @@ task.spawn(function()
 	end
 end)
 
-local fullSize = UDim2.new(0, 245, 0, 365)
-local miniSize = UDim2.new(0, 245, 0, 24)
+local fullSize = UDim2.new(0, 248, 0, 370)
+local miniSize = UDim2.new(0, 248, 0, 24)
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = fullSize
-MainFrame.Position = UDim2.new(0.5, -122, 0.5, -182)
+MainFrame.Position = UDim2.new(0.5, -124, 0.5, -185)
 MainFrame.BackgroundColor3 = Color3.fromRGB(4, 1, 12)
 MainFrame.BorderSizePixel = 0
 MainFrame.Visible = false
@@ -246,20 +330,12 @@ grad.Color = ColorSequence.new({
 
 task.spawn(function()
 	local r = 0
-	while MainFrame.Parent do
-		r = (r + 0.25) % 360
-		grad.Rotation = r
-		task.wait(0.04)
-	end
+	while MainFrame.Parent do r = (r + 0.25) % 360; grad.Rotation = r; task.wait(0.04) end
 end)
 
 task.spawn(function()
 	local h = 0
-	while MainFrame.Parent do
-		h = (h + 0.001) % 1
-		mStroke.Color = Color3.fromHSV(h, 0.5, 0.72)
-		task.wait(0.04)
-	end
+	while MainFrame.Parent do h = (h + 0.001) % 1; mStroke.Color = Color3.fromHSV(h, 0.5, 0.72); task.wait(0.04) end
 end)
 
 for i = 1, 70 do
@@ -275,20 +351,13 @@ for i = 1, 70 do
 	Instance.new("UICorner", s).CornerRadius = UDim.new(1, 0)
 	task.spawn(function()
 		while s.Parent do
-			Tween(s, {
-				BackgroundTransparency = math.random(10, 90)/100,
-				Size = UDim2.new(0, math.random(1, sz+1), 0, math.random(1, sz+1))
-			}, math.random(5, 16)/10)
+			Tween(s, {BackgroundTransparency = math.random(10, 90)/100, Size = UDim2.new(0, math.random(1, sz+1), 0, math.random(1, sz+1))}, math.random(5, 16)/10)
 			task.wait(math.random(5, 16)/10)
 		end
 	end)
 end
 
-local nebC = {
-	Color3.fromRGB(45, 12, 105), Color3.fromRGB(22, 6, 65),
-	Color3.fromRGB(65, 22, 135), Color3.fromRGB(35, 8, 85),
-	Color3.fromRGB(18, 35, 95), Color3.fromRGB(55, 15, 80)
-}
+local nebC = {Color3.fromRGB(45, 12, 105), Color3.fromRGB(22, 6, 65), Color3.fromRGB(65, 22, 135), Color3.fromRGB(35, 8, 85), Color3.fromRGB(18, 35, 95), Color3.fromRGB(55, 15, 80)}
 for i = 1, 6 do
 	local n = Instance.new("Frame")
 	n.Size = UDim2.new(0, math.random(30, 95), 0, math.random(30, 95))
@@ -301,34 +370,37 @@ for i = 1, 6 do
 	Instance.new("UICorner", n).CornerRadius = UDim.new(1, 0)
 	task.spawn(function()
 		while n.Parent do
-			Tween(n, {
-				BackgroundTransparency = math.random(87, 96)/100,
-				Position = UDim2.new(math.random(0, 80)/100, 0, math.random(0, 80)/100, 0),
-				BackgroundColor3 = Color3.fromHSV(math.random(60, 85)/100, math.random(30, 60)/100, math.random(20, 50)/100)
-			}, math.random(25, 55)/10)
+			Tween(n, {BackgroundTransparency = math.random(87, 96)/100, Position = UDim2.new(math.random(0, 80)/100, 0, math.random(0, 80)/100, 0), BackgroundColor3 = Color3.fromHSV(math.random(60, 85)/100, math.random(30, 60)/100, math.random(20, 50)/100)}, math.random(25, 55)/10)
 			task.wait(math.random(25, 55)/10)
 		end
 	end)
 end
 
-local shootingStar
 task.spawn(function()
 	while MainFrame.Parent do
-		task.wait(math.random(40, 80)/10)
+		task.wait(math.random(35, 75)/10)
 		if MainFrame.Visible and particleEnabled then
 			local ss = Instance.new("Frame")
-			ss.Size = UDim2.new(0, math.random(15, 35), 0, 1)
+			ss.Size = UDim2.new(0, math.random(15, 40), 0, 1)
 			local sy = math.random(5, 95)/100
 			ss.Position = UDim2.new(-0.1, 0, sy, 0)
 			ss.BackgroundColor3 = Color3.fromRGB(220, 210, 255)
-			ss.BackgroundTransparency = 0.3
+			ss.BackgroundTransparency = 0.2
 			ss.BorderSizePixel = 0
 			ss.ZIndex = 52
 			ss.Rotation = math.random(-15, 15)
 			ss.Parent = MainFrame
 			Instance.new("UICorner", ss).CornerRadius = UDim.new(0, 1)
+			local trail = Instance.new("Frame", ss)
+			trail.Size = UDim2.new(0.6, 0, 1, 0)
+			trail.Position = UDim2.new(0, 0, 0, 0)
+			trail.BackgroundColor3 = Color3.fromRGB(180, 160, 255)
+			trail.BackgroundTransparency = 0.5
+			trail.BorderSizePixel = 0
+			trail.ZIndex = 52
+			Instance.new("UICorner", trail).CornerRadius = UDim.new(0, 1)
 			Tween(ss, {Position = UDim2.new(1.1, 0, sy + math.random(-10, 10)/100, 0), BackgroundTransparency = 1}, math.random(8, 14)/10)
-			task.delay(1.5, function() ss:Destroy() end)
+			task.delay(1.6, function() ss:Destroy() end)
 		end
 	end
 end)
@@ -394,12 +466,10 @@ TabScroll.ScrollingDirection = Enum.ScrollingDirection.X
 TabScroll.CanvasSize = UDim2.new(0, 0, 0, 16)
 TabScroll.ZIndex = 55
 TabScroll.Parent = MainFrame
-
 local TabLayout = Instance.new("UIListLayout", TabScroll)
 TabLayout.FillDirection = Enum.FillDirection.Horizontal
 TabLayout.Padding = UDim.new(0, 2)
 TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
 TabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 	TabScroll.CanvasSize = UDim2.new(0, TabLayout.AbsoluteContentSize.X + 4, 0, 16)
 end)
@@ -447,9 +517,7 @@ local function CreateTab(name, icon, order)
 	t.MouseButton1Click:Connect(function()
 		for _, pg in pairs(Pages) do pg.Visible = false end
 		for _, c in pairs(TabScroll:GetChildren()) do
-			if c:IsA("TextButton") then
-				Tween(c, {BackgroundColor3 = Color3.fromRGB(16, 5, 36), TextColor3 = Color3.fromRGB(115, 85, 175)}, 0.1)
-			end
+			if c:IsA("TextButton") then Tween(c, {BackgroundColor3 = Color3.fromRGB(16, 5, 36), TextColor3 = Color3.fromRGB(115, 85, 175)}, 0.1) end
 		end
 		Pages[name].Visible = true
 		Tween(t, {BackgroundColor3 = Color3.fromRGB(48, 18, 100), TextColor3 = Color3.fromRGB(240, 220, 255)}, 0.1)
@@ -460,14 +528,10 @@ end
 local function SwitchTab(name)
 	for _, pg in pairs(Pages) do pg.Visible = false end
 	for _, c in pairs(TabScroll:GetChildren()) do
-		if c:IsA("TextButton") then
-			Tween(c, {BackgroundColor3 = Color3.fromRGB(16, 5, 36), TextColor3 = Color3.fromRGB(115, 85, 175)}, 0.1)
-		end
+		if c:IsA("TextButton") then Tween(c, {BackgroundColor3 = Color3.fromRGB(16, 5, 36), TextColor3 = Color3.fromRGB(115, 85, 175)}, 0.1) end
 	end
 	Pages[name].Visible = true
-	if TabButtons[name] then
-		Tween(TabButtons[name], {BackgroundColor3 = Color3.fromRGB(48, 18, 100), TextColor3 = Color3.fromRGB(240, 220, 255)}, 0.1)
-	end
+	if TabButtons[name] then Tween(TabButtons[name], {BackgroundColor3 = Color3.fromRGB(48, 18, 100), TextColor3 = Color3.fromRGB(240, 220, 255)}, 0.1) end
 end
 
 local function AL(pg, txt, ord)
@@ -667,16 +731,12 @@ local function ADrop(pg, txt, opts, ord, cb)
 		ob.Font = Enum.Font.Gotham
 		ob.ZIndex = 71
 		ob.MouseButton1Click:Connect(function()
-			sel = o
-			db.Text = "▼ " .. o
-			exp = false
-			of.Visible = false
+			sel = o; db.Text = "▼ " .. o; exp = false; of.Visible = false
 			if cb then cb(o) end
 		end)
 	end
 	db.MouseButton1Click:Connect(function()
-		exp = not exp
-		of.Visible = exp
+		exp = not exp; of.Visible = exp
 		of.Size = exp and UDim2.new(0.56, 0, 0, #opts * 17) or UDim2.new(0.56, 0, 0, 0)
 	end)
 	return function() return sel end
@@ -689,6 +749,7 @@ local function DestroyTool(tn)
 		ToolEvents[tn] = nil
 	end
 	if ToolSchedules[tn] then ToolSchedules[tn] = nil end
+	if ToolCdConns[tn] then ToolCdConns[tn] = nil end
 	ToolCooldowns[tn] = nil
 	ToolStats[tn] = nil
 	ToolTimers[tn] = nil
@@ -696,15 +757,27 @@ local function DestroyTool(tn)
 	ToolChains[tn] = nil
 	local bp = Player:FindFirstChild("Backpack")
 	local char = Player.Character
-	if bp then for _, t in pairs(bp:GetChildren()) do if t:IsA("Tool") and t.Name == tn then t:Destroy() end end end
-	if char then for _, t in pairs(char:GetChildren()) do if t:IsA("Tool") and t.Name == tn then t:Destroy() end end end
+	if bp then for _, t in pairs(bp:GetChildren()) do if t:IsA("Tool") and (t.Name == tn or t.Name:match("^" .. tn .. " %[")) then t:Destroy() end end end
+	if char then for _, t in pairs(char:GetChildren()) do if t:IsA("Tool") and (t.Name == tn or t.Name:match("^" .. tn .. " %[")) then t:Destroy() end end end
+	ToolInstances[tn] = nil
 	ActiveTools[tn] = nil
 end
 
-local function SpawnTool(tn, cd, code, desc, cond, chain, event, schedule)
+local function SpawnTool(tn, cd, code, desc, cond, chain, event)
 	DestroyTool(tn)
 	local bp = Player:FindFirstChild("Backpack")
 	if not bp then return end
+	if autoClearDupes then
+		for _, t in pairs(bp:GetChildren()) do
+			if t:IsA("Tool") and (t.Name == tn or t.Name:match("^" .. tn .. " %[")) then t:Destroy() end
+		end
+		local char = Player.Character
+		if char then
+			for _, t in pairs(char:GetChildren()) do
+				if t:IsA("Tool") and (t.Name == tn or t.Name:match("^" .. tn .. " %[")) then t:Destroy() end
+			end
+		end
+	end
 	local cooldown = tonumber(cd) or 0
 	local tool = Instance.new("Tool")
 	tool.Name = tn
@@ -712,11 +785,14 @@ local function SpawnTool(tn, cd, code, desc, cond, chain, event, schedule)
 	tool.CanBeDropped = true
 	tool.ToolTip = (desc and desc ~= "") and desc or (tn .. " [" .. cd .. "s]")
 	tool.Parent = bp
+	ToolInstances[tn] = tool
 	ToolCooldowns[tn] = false
 	ToolStats[tn] = {uses = 0, lastUsed = "Never", errors = 0, created = os.date("%H:%M:%S"), totalTime = 0, streak = 0, bestStreak = 0}
 	ToolConditions[tn] = cond or ""
 	ToolChains[tn] = chain or ""
-	local execFn = function()
+	toolCreationCount = toolCreationCount + 1
+	local conn
+	conn = tool.Activated:Connect(function()
 		if ToolCooldowns[tn] then return end
 		if cond and cond ~= "" then
 			local cOk, cR = pcall(function()
@@ -765,9 +841,11 @@ local function SpawnTool(tn, cd, code, desc, cond, chain, event, schedule)
 			end)
 		end
 		if cooldown > 0 then
+			ToolCdConns[tn] = true
 			task.spawn(function()
 				local t = tick()
-				while tick() - t < cooldown and ToolTimers[tn] do
+				while tick() - t < cooldown and ToolTimers[tn] and ToolCdConns[tn] do
+					local remaining = cooldown - (tick() - t)
 					local pct = (tick() - t) / cooldown
 					CdBar.Size = UDim2.new(math.clamp(1 - pct, 0, 1), 0, 1, 0)
 					CdBar.BackgroundColor3 = Color3.fromRGB(
@@ -775,11 +853,14 @@ local function SpawnTool(tn, cd, code, desc, cond, chain, event, schedule)
 						math.floor(60 - pct * 40),
 						math.floor(220 - pct * 100)
 					)
-					if cdOverlayEnabled then CdLabel.Text = tn .. " " .. string.format("%.1f", cooldown - (tick() - t)) .. "s" end
-					task.wait(0.04)
+					if cdOverlayEnabled then CdLabel.Text = tn .. " " .. string.format("%.1f", remaining) .. "s" end
+					UpdateToolCdName(tn, remaining)
+					task.wait(0.05)
 				end
 				ToolCooldowns[tn] = false
 				ToolTimers[tn] = nil
+				ToolCdConns[tn] = nil
+				UpdateToolCdName(tn, nil)
 				if not next(ToolTimers) then CdOverlay.Visible = false end
 			end)
 		else
@@ -787,8 +868,7 @@ local function SpawnTool(tn, cd, code, desc, cond, chain, event, schedule)
 			ToolTimers[tn] = nil
 			task.delay(0.4, function() if not next(ToolTimers) then CdOverlay.Visible = false end end)
 		end
-	end
-	local conn = tool.Activated:Connect(execFn)
+	end)
 	Connections[tn] = conn
 	if event and event ~= "" then
 		ToolEvents[tn] = {}
@@ -804,17 +884,15 @@ local function SpawnTool(tn, cd, code, desc, cond, chain, event, schedule)
 					task.wait(interval)
 				end
 			end)
-			AddLog("Loop event: " .. tn .. " every " .. interval .. "s")
 		end
 		if event:lower():find("heartbeat") then
-			local hbConn = RunService.Heartbeat:Connect(function()
+			local hbC = RunService.Heartbeat:Connect(function()
 				pcall(function()
 					local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()})
 					setfenv(loadstring(code), env)()
 				end)
 			end)
-			table.insert(ToolEvents[tn], hbConn)
-			AddLog("Heartbeat event: " .. tn)
+			table.insert(ToolEvents[tn], hbC)
 		end
 		if event:lower():find("damage") then
 			task.spawn(function()
@@ -830,19 +908,14 @@ local function SpawnTool(tn, cd, code, desc, cond, chain, event, schedule)
 									local env = setmetatable({vars = ToolVars, player = Player, damage = hp - hum.Health}, {__index = getfenv()})
 									setfenv(loadstring(code), env)()
 								end)
-								AddLog("Damage event: " .. tn)
 							end
-						else
-							task.wait(0.5)
-						end
-					else
-						task.wait(0.5)
-					end
+						else task.wait(0.5) end
+					else task.wait(0.5) end
 				end
 			end)
 		end
 	end
-	ActiveTools[tn] = {name = tn, cooldown = cd, code = code, desc = desc or "", condition = cond or "", chain = chain or "", event = event or "", schedule = schedule or ""}
+	ActiveTools[tn] = {name = tn, cooldown = cd, code = code, desc = desc or "", condition = cond or "", chain = chain or "", event = event or ""}
 	AddLog("Spawned: " .. tn)
 end
 
@@ -857,7 +930,7 @@ local profilePage = CreatePage("Profile")
 local logPage = CreatePage("Log")
 local configPage = CreatePage("Config")
 
-local tabCreate = CreateTab("Create", "✦", 1)
+CreateTab("Create", "✦", 1)
 CreateTab("Manage", "⚙", 2)
 CreateTab("Saves", "💾", 3)
 CreateTab("Macro", "▶", 4)
@@ -875,10 +948,10 @@ local descIn = AI(createPage, "Optional...", 4)
 AL(createPage, "Cooldown (sec):", 5)
 local cdIn = AI(createPage, "0", 6)
 AL(createPage, "Condition:", 7)
-local condIn = AI(createPage, "true (or leave empty)", 8)
-AL(createPage, "Chain Tools (comma sep):", 9)
+local condIn = AI(createPage, "true", 8)
+AL(createPage, "Chain (comma sep):", 9)
 local chainIn = AI(createPage, "ToolA,ToolB...", 10)
-AL(createPage, "Event (loop:N / heartbeat / damage):", 11)
+AL(createPage, "Event (loop:N/heartbeat/damage):", 11)
 local eventIn = AI(createPage, "Optional...", 12)
 AL(createPage, "Script:", 13)
 local codeIn = AI(createPage, "print('Hello!')", 14, true)
@@ -924,7 +997,7 @@ end)
 AS(createPage, 20)
 AL(createPage, "⚡ Templates:", 21)
 
-local T = {
+local TM = {
 	{n="KillAura",cd="1",c=[[local me=game.Players.LocalPlayer;local ch=me.Character;if not ch then return end;local h=ch:FindFirstChild("HumanoidRootPart");if not h then return end;for _,v in pairs(game.Players:GetPlayers())do if v~=me and v.Character then local hm=v.Character:FindFirstChild("Humanoid");local t=v.Character:FindFirstChild("HumanoidRootPart");if hm and t and(t.Position-h.Position).Magnitude<15 then hm.Health=0 end end end]]},
 	{n="Speed100",cd="3",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid");if h then h.WalkSpeed=100 end]]},
 	{n="Jump150",cd="2",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid");if h then h.JumpPower=150 end]]},
@@ -945,7 +1018,7 @@ local T = {
 	{n="BigHead",cd="1",c=[[for _,v in pairs(game.Players:GetPlayers())do if v.Character and v.Character:FindFirstChild("Head")then v.Character.Head.Size=Vector3.new(5,5,5)end end]]},
 }
 
-for i, t in ipairs(T) do
+for i, t in ipairs(TM) do
 	AB(createPage, "📋 " .. t.n, 21 + i, function()
 		nameIn.Text = t.n; cdIn.Text = t.cd; codeIn.Text = t.c; descIn.Text = t.n; condIn.Text = ""; chainIn.Text = ""; eventIn.Text = ""
 		Notify("Template: " .. t.n)
@@ -956,11 +1029,9 @@ AL(managePage, "Tool Name:", 1)
 local delIn = AI(managePage, "Name...", 2)
 
 AB(managePage, "🗑 Delete", 3, function()
-	local n = delIn.Text
-	if not ActiveTools[n] then Notify("Not found!") return end
+	local n = delIn.Text; if not ActiveTools[n] then Notify("Not found!") return end
 	table.insert(UndoHistory, {a = "delete", d = {name = ActiveTools[n].name, cooldown = ActiveTools[n].cooldown, code = ActiveTools[n].code, desc = ActiveTools[n].desc, condition = ActiveTools[n].condition or "", chain = ActiveTools[n].chain or "", event = ActiveTools[n].event or ""}, n = n})
-	DestroyTool(n)
-	Notify("Deleted: " .. n, Color3.fromRGB(200, 120, 60))
+	DestroyTool(n); Notify("Deleted: " .. n, Color3.fromRGB(200, 120, 60))
 end)
 
 AB(managePage, "⭐ Favorite", 4, function()
@@ -970,11 +1041,10 @@ AB(managePage, "⭐ Favorite", 4, function()
 end)
 
 AB(managePage, "📊 Stats", 5, function()
-	local n = delIn.Text
-	if not ToolStats[n] then Notify("Not found!") return end
+	local n = delIn.Text; if not ToolStats[n] then Notify("Not found!") return end
 	local s = ToolStats[n]
 	local avg = s.uses > 0 and string.format("%.3f", s.totalTime / s.uses) or "N/A"
-	Notify(n .. ": " .. s.uses .. "x err:" .. s.errors .. " avg:" .. avg .. "s best:" .. s.bestStreak, Color3.fromRGB(100, 180, 255))
+	Notify(n .. ": " .. s.uses .. "x err:" .. s.errors .. " avg:" .. avg .. "s 🔥" .. s.bestStreak, Color3.fromRGB(100, 180, 255))
 end)
 
 AB(managePage, "✏ Edit", 6, function()
@@ -987,14 +1057,13 @@ end)
 AB(managePage, "📋 Duplicate", 7, function()
 	local n = delIn.Text; if not ActiveTools[n] then Notify("Not found!") return end
 	local nn = n .. "_copy"; local c = 1; while ActiveTools[nn] do c = c + 1; nn = n .. "_copy" .. c end
-	local a = ActiveTools[n]
-	SpawnTool(nn, a.cooldown, a.code, a.desc, a.condition, a.chain, a.event)
+	local a = ActiveTools[n]; SpawnTool(nn, a.cooldown, a.code, a.desc, a.condition, a.chain, a.event)
 	Notify("Duped: " .. nn, Color3.fromRGB(100, 200, 150))
 end)
 
 AB(managePage, "🔄 Rename", 8, function()
 	local old = delIn.Text; if not ActiveTools[old] then Notify("Not found!") return end
-	local nn = nameIn.Text; if nn == "" then Notify("Set new name in Create!") return end
+	local nn = nameIn.Text; if nn == "" then Notify("Set name in Create!") return end
 	local a = ActiveTools[old]; DestroyTool(old)
 	SpawnTool(nn, a.cooldown, a.code, a.desc, a.condition, a.chain, a.event)
 	Notify(old .. " → " .. nn, Color3.fromRGB(100, 200, 180))
@@ -1008,10 +1077,9 @@ AB(managePage, "🗑 Delete ALL", 10, function()
 		table.insert(UndoHistory, {a = "delete", d = {name = v.name, cooldown = v.cooldown, code = v.code, desc = v.desc, condition = v.condition or "", chain = v.chain or "", event = v.event or ""}, n = n})
 		c = c + 1
 	end
-	local ns = {}; for n in pairs(ActiveTools) do ns[n] = true end
-	for n in pairs(ns) do DestroyTool(n) end
-	ActiveTools = {}
-	Notify("Deleted " .. c, Color3.fromRGB(200, 120, 60))
+	local ns = {}; for n in pairs(ActiveTools) do table.insert(ns, n) end
+	for _, n in ipairs(ns) do DestroyTool(n) end
+	ActiveTools = {}; Notify("Deleted " .. c, Color3.fromRGB(200, 120, 60))
 end)
 
 AB(managePage, "🔄 Re-equip All", 11, function()
@@ -1022,35 +1090,35 @@ end)
 
 AB(managePage, "⏹ Stop All Events", 12, function()
 	local c = 0
-	for tn, evts in pairs(ToolEvents) do
-		for _, conn in pairs(evts) do pcall(function() conn:Disconnect() end) end
-		c = c + 1
-	end
-	ToolEvents = {}
-	for tn in pairs(ToolSchedules) do ToolSchedules[tn] = nil end
+	for tn, evts in pairs(ToolEvents) do for _, cn in pairs(evts) do pcall(function() cn:Disconnect() end) end; c = c + 1 end
+	ToolEvents = {}; for tn in pairs(ToolSchedules) do ToolSchedules[tn] = nil end
 	Notify("Stopped " .. c .. " events", Color3.fromRGB(200, 120, 60))
 end)
 
-AS(managePage, 13)
-AL(managePage, "Keybind:", 14)
-local kbIn = AI(managePage, "Key (E,F,G...)", 15)
+AB(managePage, "🧹 Scan & Clear Dupes", 13, function()
+	ScanAndClearAllDupes(); Notify("Dupes cleared!", Color3.fromRGB(100, 200, 180))
+end)
 
-AB(managePage, "🎮 Set Keybind", 16, function()
+AS(managePage, 14)
+AL(managePage, "Keybind:", 15)
+local kbIn = AI(managePage, "Key (E,F,G...)", 16)
+
+AB(managePage, "🎮 Set Keybind", 17, function()
 	local n = delIn.Text; local k = kbIn.Text:upper()
 	if n == "" or k == "" then Notify("Fill!") return end
 	Keybinds[k] = n; Notify(k .. " → " .. n, Color3.fromRGB(180, 140, 255))
 end)
 
-AB(managePage, "🎮 Remove Keybind", 17, function()
+AB(managePage, "🎮 Remove Keybind", 18, function()
 	local k = kbIn.Text:upper()
 	if Keybinds[k] then Keybinds[k] = nil; Notify("Removed: " .. k) else Notify("No bind!") end
 end)
 
-AS(managePage, 18)
-AL(managePage, "Active Tools:", 19)
-local activeLabel = AIB(managePage, 20, 75)
-AL(managePage, "Keybinds:", 21)
-local kbLabel = AIB(managePage, 22, 40)
+AS(managePage, 19)
+AL(managePage, "Active Tools:", 20)
+local activeLabel = AIB(managePage, 21, 80)
+AL(managePage, "Keybinds:", 22)
+local kbLabel = AIB(managePage, 23, 40)
 
 AL(savePage, "Save Slot:", 1)
 local saveIn = AI(savePage, "Slot name...", 2)
@@ -1142,7 +1210,7 @@ AL(macroPage, "Sequence (comma sep):", 3)
 local mcSeqIn = AI(macroPage, "Tool1,Tool2...", 4)
 AL(macroPage, "Delay (sec):", 5)
 local mcDelIn = AI(macroPage, "0.5", 6)
-AL(macroPage, "Repeat Count (0=inf):", 7)
+AL(macroPage, "Repeat (0=inf):", 7)
 local mcRepIn = AI(macroPage, "1", 8)
 AS(macroPage, 9)
 
@@ -1155,34 +1223,26 @@ end)
 
 AB(macroPage, "▶ Run", 11, function()
 	local mn = mcNameIn.Text; if not Macros[mn] then Notify("Not found!") return end
-	local m = Macros[mn]; local reps = m.repeats or 1
-	Notify("Running: " .. mn, Color3.fromRGB(255, 200, 60))
+	local m = Macros[mn]; Notify("Running: " .. mn, Color3.fromRGB(255, 200, 60))
 	task.spawn(function()
-		local count = 0
+		local count = 0; local reps = m.repeats or 1
 		while (reps == 0 or count < reps) and getgenv().ToolsCreator do
 			for i, tn in ipairs(m.tools) do
-				if ActiveTools[tn] then
-					pcall(function()
-						local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()})
-						setfenv(loadstring(ActiveTools[tn].code), env)()
-					end)
-					AddLog("Macro: " .. tn .. " (" .. i .. "/" .. #m.tools .. ")")
-				end
+				if ActiveTools[tn] then pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); setfenv(loadstring(ActiveTools[tn].code), env)() end) end
 				if i < #m.tools then task.wait(m.delay) end
 			end
 			count = count + 1
 			if reps == 0 and not getgenv()["macro_loop_" .. mn] then break end
 			if count < reps or reps == 0 then task.wait(m.delay) end
 		end
-		Notify("Macro done: " .. mn, Color3.fromRGB(60, 180, 120))
+		Notify("Done: " .. mn, Color3.fromRGB(60, 180, 120))
 	end)
 end)
 
 AB(macroPage, "🔁 Loop", 12, function()
 	local mn = mcNameIn.Text; if not Macros[mn] then Notify("Not found!") return end
 	if getgenv()["macro_loop_" .. mn] then getgenv()["macro_loop_" .. mn] = false; Notify("Stopped: " .. mn); return end
-	getgenv()["macro_loop_" .. mn] = true
-	Notify("Looping: " .. mn, Color3.fromRGB(255, 200, 60))
+	getgenv()["macro_loop_" .. mn] = true; Notify("Looping: " .. mn, Color3.fromRGB(255, 200, 60))
 	task.spawn(function()
 		while getgenv()["macro_loop_" .. mn] and Macros[mn] do
 			for i, tn in ipairs(Macros[mn].tools) do
@@ -1195,7 +1255,7 @@ AB(macroPage, "🔁 Loop", 12, function()
 	end)
 end)
 
-AB(macroPage, "🗑 Delete Macro", 13, function()
+AB(macroPage, "🗑 Delete", 13, function()
 	local mn = mcNameIn.Text; if not Macros[mn] then Notify("Not found!") return end
 	getgenv()["macro_loop_" .. mn] = false; Macros[mn] = nil; Notify("Deleted: " .. mn, Color3.fromRGB(200, 120, 60))
 end)
@@ -1218,7 +1278,7 @@ AB(groupPage, "📁 Create", 6, function()
 	ToolGroups[gn] = tools; Notify("Group: " .. gn .. " (" .. #tools .. ")", Color3.fromRGB(60, 180, 120))
 end)
 
-AB(groupPage, "▶ Equip Group", 7, function()
+AB(groupPage, "▶ Equip", 7, function()
 	local gn = grpIn.Text; if not ToolGroups[gn] then Notify("Not found!") return end
 	local char = Player.Character; if not char then return end
 	local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end
@@ -1230,16 +1290,13 @@ AB(groupPage, "▶ Equip Group", 7, function()
 	Notify("Equipped: " .. gn, Color3.fromRGB(100, 180, 255))
 end)
 
-AB(groupPage, "▶ Run Group Scripts", 8, function()
+AB(groupPage, "▶ Run All Scripts", 8, function()
 	local gn = grpIn.Text; if not ToolGroups[gn] then Notify("Not found!") return end
 	local c = 0
 	for _, tn in ipairs(ToolGroups[gn]) do
-		if ActiveTools[tn] then
-			pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); setfenv(loadstring(ActiveTools[tn].code), env)() end)
-			c = c + 1
-		end
+		if ActiveTools[tn] then pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); setfenv(loadstring(ActiveTools[tn].code), env)() end); c = c + 1 end
 	end
-	Notify("Ran " .. c .. " scripts", Color3.fromRGB(100, 180, 255))
+	Notify("Ran " .. c, Color3.fromRGB(100, 180, 255))
 end)
 
 AB(groupPage, "🗑 Delete Group", 9, function()
@@ -1247,7 +1304,7 @@ AB(groupPage, "🗑 Delete Group", 9, function()
 	ToolGroups[gn] = nil; Notify("Deleted: " .. gn, Color3.fromRGB(200, 120, 60))
 end)
 
-AB(groupPage, "🗑 Delete Group+Tools", 10, function()
+AB(groupPage, "🗑 Delete + Tools", 10, function()
 	local gn = grpIn.Text; if not ToolGroups[gn] then Notify("Not found!") return end
 	for _, tn in ipairs(ToolGroups[gn]) do if ActiveTools[tn] then DestroyTool(tn) end end
 	ToolGroups[gn] = nil; Notify("Deleted all: " .. gn, Color3.fromRGB(200, 120, 60))
@@ -1263,34 +1320,27 @@ AL(varPage, "Value:", 3)
 local varValIn = AI(varPage, "value", 4)
 AS(varPage, 5)
 
-AB(varPage, "📊 Set Variable", 6, function()
-	local vn = varNameIn.Text; local vv = varValIn.Text
-	if vn == "" then Notify("Enter name!") return end
+AB(varPage, "📊 Set", 6, function()
+	local vn = varNameIn.Text; local vv = varValIn.Text; if vn == "" then return end
 	local num = tonumber(vv)
-	if num then ToolVars[vn] = num
-	elseif vv == "true" then ToolVars[vn] = true
-	elseif vv == "false" then ToolVars[vn] = false
-	elseif vv == "nil" then ToolVars[vn] = nil
-	else ToolVars[vn] = vv end
+	if num then ToolVars[vn] = num elseif vv == "true" then ToolVars[vn] = true elseif vv == "false" then ToolVars[vn] = false elseif vv == "nil" then ToolVars[vn] = nil else ToolVars[vn] = vv end
 	Notify("Set: " .. vn .. " = " .. tostring(ToolVars[vn]), Color3.fromRGB(60, 180, 120))
 end)
 
-AB(varPage, "🗑 Delete Variable", 7, function()
-	local vn = varNameIn.Text; if vn == "" then return end
-	ToolVars[vn] = nil; Notify("Deleted: " .. vn, Color3.fromRGB(200, 120, 60))
+AB(varPage, "🗑 Delete", 7, function()
+	local vn = varNameIn.Text; if vn == "" then return end; ToolVars[vn] = nil; Notify("Deleted: " .. vn, Color3.fromRGB(200, 120, 60))
 end)
 
-AB(varPage, "🗑 Clear All Vars", 8, function()
+AB(varPage, "🗑 Clear All", 8, function()
 	ToolVars = {}; getgenv().TC_Vars = ToolVars; Notify("Cleared!", Color3.fromRGB(200, 120, 60))
 end)
 
 AS(varPage, 9)
 AL(varPage, "Variables:", 10)
 local varLabel = AIB(varPage, 11, 80)
-AS(varPage, 12)
-AL(varPage, "Usage in scripts:", 13)
-local varHelpLabel = AIB(varPage, 14, 50)
-varHelpLabel.Text = "Access: vars.name\nSet: vars.name = value\nCondition: vars.hp > 50\nShared across all tools"
+AL(varPage, "Usage:", 12)
+local varHelp = AIB(varPage, 13, 45)
+varHelp.Text = "Access: vars.name\nCondition: vars.hp > 50\nShared across all tools"
 
 AL(snippetPage, "Snippet Name:", 1)
 local snipNameIn = AI(snippetPage, "Name...", 2)
@@ -1298,9 +1348,8 @@ AL(snippetPage, "Code:", 3)
 local snipCodeIn = AI(snippetPage, "Reusable code...", 4, true)
 AS(snippetPage, 5)
 
-AB(snippetPage, "✂ Save Snippet", 6, function()
-	local sn = snipNameIn.Text; local sc = snipCodeIn.Text
-	if sn == "" or sc == "" then Notify("Fill!") return end
+AB(snippetPage, "✂ Save", 6, function()
+	local sn = snipNameIn.Text; local sc = snipCodeIn.Text; if sn == "" or sc == "" then Notify("Fill!") return end
 	Snippets[sn] = sc; Notify("Saved: " .. sn, Color3.fromRGB(60, 180, 120))
 end)
 
@@ -1309,18 +1358,18 @@ AB(snippetPage, "📋 Load to Editor", 7, function()
 	codeIn.Text = Snippets[sn]; SwitchTab("Create"); Notify("Loaded: " .. sn)
 end)
 
-AB(snippetPage, "📋 Append to Editor", 8, function()
+AB(snippetPage, "📋 Append", 8, function()
 	local sn = snipNameIn.Text; if not Snippets[sn] then Notify("Not found!") return end
 	codeIn.Text = codeIn.Text .. "\n" .. Snippets[sn]; Notify("Appended: " .. sn)
 end)
 
-AB(snippetPage, "⚡ Run Snippet", 9, function()
+AB(snippetPage, "⚡ Run", 9, function()
 	local sn = snipNameIn.Text; if not Snippets[sn] then Notify("Not found!") return end
 	local ok, err = pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); setfenv(loadstring(Snippets[sn]), env)() end)
 	Notify(ok and "OK!" or ("Err: " .. tostring(err):sub(1, 30)), ok and Color3.fromRGB(60, 180, 120) or Color3.fromRGB(200, 60, 60))
 end)
 
-AB(snippetPage, "🗑 Delete Snippet", 10, function()
+AB(snippetPage, "🗑 Delete", 10, function()
 	local sn = snipNameIn.Text; if not Snippets[sn] then Notify("Not found!") return end
 	Snippets[sn] = nil; Notify("Deleted: " .. sn, Color3.fromRGB(200, 120, 60))
 end)
@@ -1329,11 +1378,11 @@ AS(snippetPage, 11)
 AL(snippetPage, "Snippets:", 12)
 local snipLabel = AIB(snippetPage, 13, 70)
 
-AL(profilePage, "Profile Name:", 1)
-local profIn = AI(profilePage, "Profile name...", 2)
+AL(profilePage, "Profile:", 1)
+local profIn = AI(profilePage, "Name...", 2)
 AS(profilePage, 3)
 
-AB(profilePage, "👤 Save Profile", 4, function()
+AB(profilePage, "👤 Save", 4, function()
 	local pn = profIn.Text; if pn == "" then Notify("Enter name!") return end
 	local tools = {}; for _, v in pairs(ActiveTools) do table.insert(tools, {name = v.name, cooldown = v.cooldown, code = v.code, desc = v.desc, condition = v.condition, chain = v.chain, event = v.event}) end
 	local kbs = {}; for k, v in pairs(Keybinds) do kbs[k] = v end
@@ -1342,120 +1391,109 @@ AB(profilePage, "👤 Save Profile", 4, function()
 	local vs = {}; for k, v in pairs(ToolVars) do vs[k] = v end
 	local sn = {}; for k, v in pairs(Snippets) do sn[k] = v end
 	Profiles[pn] = {tools = tools, keybinds = kbs, macros = mcs, groups = gs, vars = vs, snippets = sn}
-	currentProfile = pn
-	Notify("Profile saved: " .. pn, Color3.fromRGB(60, 180, 120))
+	currentProfile = pn; Notify("Saved: " .. pn, Color3.fromRGB(60, 180, 120))
 end)
 
-AB(profilePage, "👤 Load Profile", 5, function()
+AB(profilePage, "👤 Load", 5, function()
 	local pn = profIn.Text; if not Profiles[pn] then Notify("Not found!") return end
 	local p = Profiles[pn]
-	local ns = {}; for n in pairs(ActiveTools) do ns[n] = true end
-	for n in pairs(ns) do DestroyTool(n) end
-	ActiveTools = {}
+	local ns = {}; for n in pairs(ActiveTools) do table.insert(ns, n) end
+	for _, n in ipairs(ns) do DestroyTool(n) end; ActiveTools = {}
 	if p.tools then for _, d in pairs(p.tools) do SpawnTool(d.name, d.cooldown, d.code, d.desc, d.condition, d.chain, d.event) end end
 	if p.keybinds then Keybinds = p.keybinds; getgenv().TC_Keybinds = Keybinds end
 	if p.macros then Macros = p.macros; getgenv().TC_Macros = Macros end
 	if p.groups then ToolGroups = p.groups; getgenv().TC_Groups = ToolGroups end
 	if p.vars then ToolVars = p.vars; getgenv().TC_Vars = ToolVars end
 	if p.snippets then Snippets = p.snippets; getgenv().TC_Snippets = Snippets end
-	currentProfile = pn
-	Notify("Loaded: " .. pn, Color3.fromRGB(100, 180, 255))
+	currentProfile = pn; Notify("Loaded: " .. pn, Color3.fromRGB(100, 180, 255))
 end)
 
-AB(profilePage, "🗑 Delete Profile", 6, function()
+AB(profilePage, "🗑 Delete", 6, function()
 	local pn = profIn.Text; if not Profiles[pn] then Notify("Not found!") return end
 	Profiles[pn] = nil; Notify("Deleted: " .. pn, Color3.fromRGB(200, 120, 60))
 end)
 
-AB(profilePage, "📤 Export Profile (JSON)", 7, function()
+AB(profilePage, "📤 Export JSON", 7, function()
 	local pn = profIn.Text; if not Profiles[pn] then Notify("Not found!") return end
 	expOut.Text = HttpService:JSONEncode({profile = pn, data = Profiles[pn]})
-	SwitchTab("Saves"); Notify("Exported profile!", Color3.fromRGB(100, 180, 255))
+	SwitchTab("Saves"); Notify("Exported!", Color3.fromRGB(100, 180, 255))
 end)
 
-AB(profilePage, "📥 Import Profile (JSON)", 8, function()
-	SwitchTab("Saves")
-	Notify("Paste JSON in export field, then use import")
-end)
+AS(profilePage, 8)
+AL(profilePage, "Profiles:", 9)
+local profLabel = AIB(profilePage, 10, 65)
 
-AS(profilePage, 9)
-AL(profilePage, "Current: " .. currentProfile, 10)
-AL(profilePage, "Profiles:", 11)
-local profLabel = AIB(profilePage, 12, 65)
-
-AL(logPage, "Execution Log:", 1)
+AL(logPage, "Log:", 1)
 local logLabel = AIB(logPage, 2, 200)
 
 AB(logPage, "🗑 Clear", 3, function() LogEntries = {}; Notify("Cleared!") end)
 
-AB(logPage, "📋 Copy Log", 4, function()
+AB(logPage, "📋 Copy", 4, function()
 	if setclipboard then setclipboard(table.concat(LogEntries, "\n")); Notify("Copied!") else Notify("No clipboard!") end
 end)
 
 AS(logPage, 5)
-AL(logPage, "Statistics:", 6)
-local statsLabel = AIB(logPage, 7, 100)
+AL(logPage, "Stats:", 6)
+local statsLabel = AIB(logPage, 7, 110)
 
 AL(configPage, "⚙ Settings:", 1)
 AS(configPage, 2)
 ATog(configPage, "Auto Re-equip", 3, true, function(v) autoRespawnTools = v end)
-ATog(configPage, "Enable Logging", 4, true, function(v) logEnabled = v end)
+ATog(configPage, "Logging", 4, true, function(v) logEnabled = v end)
 ATog(configPage, "Cooldown Bar", 5, true, function(v) cdOverlayEnabled = v; if not v then CdOverlay.Visible = false end end)
-ATog(configPage, "Particles", 6, true, function(v) particleEnabled = v end)
-ATog(configPage, "Anti-Detect Names", 7, false, function(v) antiDetect = v end)
+ATog(configPage, "Particles/Shooting Stars", 6, true, function(v) particleEnabled = v end)
+ATog(configPage, "CD Name Change", 7, true, function(v) cdNamingEnabled = v end)
+ATog(configPage, "Auto Clear Dupes", 8, true, function(v) autoClearDupes = v end)
 
-AS(configPage, 8)
-AL(configPage, "Opacity (0-100):", 9)
-local opIn = AI(configPage, "100", 10)
-AB(configPage, "Apply", 11, function()
+AS(configPage, 9)
+AL(configPage, "Opacity (0-100):", 10)
+local opIn = AI(configPage, "100", 11)
+AB(configPage, "Apply", 12, function()
 	local v = tonumber(opIn.Text); if not v then return end
-	GradBG.BackgroundTransparency = 1 - math.clamp(v, 0, 100) / 100
-	Notify("Opacity: " .. math.floor(v) .. "%")
+	GradBG.BackgroundTransparency = 1 - math.clamp(v, 0, 100) / 100; Notify("Opacity: " .. math.floor(v) .. "%")
 end)
 
-AL(configPage, "Scale (50-200):", 12)
-local scIn = AI(configPage, "100", 13)
-AB(configPage, "Apply", 14, function()
+AL(configPage, "Scale (50-200):", 13)
+local scIn = AI(configPage, "100", 14)
+AB(configPage, "Apply", 15, function()
 	local v = tonumber(scIn.Text); if not v then return end
 	v = math.clamp(v, 50, 200) / 100
-	fullSize = UDim2.new(0, math.floor(245 * v), 0, math.floor(365 * v))
-	miniSize = UDim2.new(0, math.floor(245 * v), 0, 24)
-	MainFrame.Size = minimized and miniSize or fullSize
-	Notify("Scale: " .. math.floor(v * 100) .. "%")
+	fullSize = UDim2.new(0, math.floor(248 * v), 0, math.floor(370 * v))
+	miniSize = UDim2.new(0, math.floor(248 * v), 0, 24)
+	MainFrame.Size = minimized and miniSize or fullSize; Notify("Scale: " .. math.floor(v * 100) .. "%")
 end)
 
-AS(configPage, 15)
+AS(configPage, 16)
 
 local themeColors = {
-	Galaxy = {bg = Color3.fromRGB(5, 1, 15), title = Color3.fromRGB(10, 3, 26), accent = Color3.fromRGB(120, 60, 200)},
-	Nebula = {bg = Color3.fromRGB(15, 1, 10), title = Color3.fromRGB(28, 3, 18), accent = Color3.fromRGB(200, 60, 140)},
-	Void = {bg = Color3.fromRGB(1, 1, 5), title = Color3.fromRGB(4, 4, 14), accent = Color3.fromRGB(60, 60, 200)},
-	Cosmic = {bg = Color3.fromRGB(8, 6, 1), title = Color3.fromRGB(18, 14, 4), accent = Color3.fromRGB(200, 170, 60)},
-	Blood = {bg = Color3.fromRGB(12, 1, 1), title = Color3.fromRGB(25, 3, 3), accent = Color3.fromRGB(200, 40, 40)},
-	Emerald = {bg = Color3.fromRGB(1, 10, 5), title = Color3.fromRGB(3, 22, 12), accent = Color3.fromRGB(40, 200, 100)},
-	Frost = {bg = Color3.fromRGB(2, 8, 14), title = Color3.fromRGB(5, 16, 28), accent = Color3.fromRGB(80, 180, 240)}
+	Galaxy = {bg = Color3.fromRGB(5, 1, 15), title = Color3.fromRGB(10, 3, 26)},
+	Nebula = {bg = Color3.fromRGB(15, 1, 10), title = Color3.fromRGB(28, 3, 18)},
+	Void = {bg = Color3.fromRGB(1, 1, 5), title = Color3.fromRGB(4, 4, 14)},
+	Cosmic = {bg = Color3.fromRGB(8, 6, 1), title = Color3.fromRGB(18, 14, 4)},
+	Blood = {bg = Color3.fromRGB(12, 1, 1), title = Color3.fromRGB(25, 3, 3)},
+	Emerald = {bg = Color3.fromRGB(1, 10, 5), title = Color3.fromRGB(3, 22, 12)},
+	Frost = {bg = Color3.fromRGB(2, 8, 14), title = Color3.fromRGB(5, 16, 28)}
 }
 
-ADrop(configPage, "Theme:", {"Galaxy", "Nebula", "Void", "Cosmic", "Blood", "Emerald", "Frost"}, 16, function(theme)
+ADrop(configPage, "Theme:", {"Galaxy","Nebula","Void","Cosmic","Blood","Emerald","Frost"}, 17, function(theme)
 	local t = themeColors[theme]
 	Tween(GradBG, {BackgroundColor3 = t.bg}, 0.4)
 	Tween(TitleBar, {BackgroundColor3 = t.title}, 0.4)
-	Notify("Theme: " .. theme, t.accent)
+	Notify("Theme: " .. theme)
 end)
 
-AS(configPage, 17)
-AB(configPage, "🔴 Destroy GUI", 18, function()
+AS(configPage, 18)
+AB(configPage, "🔴 Destroy GUI", 19, function()
 	getgenv().ToolsCreator = false
 	for n, c in pairs(Connections) do c:Disconnect() end
 	for tn, evts in pairs(ToolEvents) do for _, c in pairs(evts) do pcall(function() c:Disconnect() end) end end
 	for tn in pairs(ToolSchedules) do ToolSchedules[tn] = nil end
 	for mn in pairs(Macros) do getgenv()["macro_loop_" .. mn] = false end
-	Connections = {}; ToolEvents = {}
-	ScreenGui:Destroy()
+	Connections = {}; ToolEvents = {}; ScreenGui:Destroy()
 end, Color3.fromRGB(80, 10, 10))
 
-AS(configPage, 19)
-AL(configPage, "V1.0 | Tools Creator", 20)
+AS(configPage, 20)
+AL(configPage, "V1.0 | Tools Creator", 21)
 
 SwitchTab("Create")
 
@@ -1481,10 +1519,8 @@ UIS.InputBegan:Connect(function(input, gpe)
 	if input.UserInputType == Enum.UserInputType.Keyboard then
 		local key = input.KeyCode.Name:upper()
 		if Keybinds[key] and ActiveTools[Keybinds[key]] then
-			local tn = Keybinds[key]
-			if ToolCooldowns[tn] then return end
-			local a = ActiveTools[tn]
-			local cond = a.condition or ""
+			local tn = Keybinds[key]; if ToolCooldowns[tn] then return end
+			local a = ActiveTools[tn]; local cond = a.condition or ""
 			if cond ~= "" then
 				local ok, r = pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); return setfenv(loadstring("return " .. cond), env)() end)
 				if not ok or not r then return end
@@ -1494,10 +1530,64 @@ UIS.InputBegan:Connect(function(input, gpe)
 			pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); setfenv(loadstring(a.code), env)() end)
 			AddLog("Key [" .. key .. "] → " .. tn)
 			local cd = tonumber(a.cooldown) or 0
-			if cd > 0 then task.delay(cd, function() ToolCooldowns[tn] = false end) else ToolCooldowns[tn] = false end
+			if cd > 0 then
+				ToolCdConns[tn] = true
+				task.spawn(function()
+					local st = tick()
+					while tick() - st < cd and ToolCdConns[tn] do
+						UpdateToolCdName(tn, cd - (tick() - st))
+						task.wait(0.05)
+					end
+					ToolCooldowns[tn] = false
+					ToolCdConns[tn] = nil
+					UpdateToolCdName(tn, nil)
+				end)
+			else
+				ToolCooldowns[tn] = false
+			end
 		end
 	end
 end)
+
+local bpConn
+local charConn
+
+local function WatchBackpack()
+	local bp = Player:FindFirstChild("Backpack")
+	if not bp then return end
+	if bpConn then bpConn:Disconnect() end
+	bpConn = bp.ChildAdded:Connect(function(child)
+		if not child:IsA("Tool") then return end
+		if not autoClearDupes then return end
+		task.wait()
+		for tn, myTool in pairs(ToolInstances) do
+			if child.Name == tn and child ~= myTool and myTool and myTool.Parent then
+				child:Destroy()
+				AddLog("Auto-removed dupe: " .. tn)
+			end
+		end
+	end)
+end
+
+local function WatchChar()
+	local char = Player.Character
+	if not char then return end
+	if charConn then charConn:Disconnect() end
+	charConn = char.ChildAdded:Connect(function(child)
+		if not child:IsA("Tool") then return end
+		if not autoClearDupes then return end
+		task.wait()
+		for tn, myTool in pairs(ToolInstances) do
+			if child.Name == tn and child ~= myTool and myTool and myTool.Parent then
+				child:Destroy()
+				AddLog("Auto-removed dupe (char): " .. tn)
+			end
+		end
+	end)
+end
+
+WatchBackpack()
+WatchChar()
 
 task.spawn(function()
 	while getgenv().ToolsCreator and ScreenGui.Parent do
@@ -1506,13 +1596,17 @@ task.spawn(function()
 
 		local favs, others = {}, {}
 		for name, v in pairs(ActiveTools) do
-			local cd = ToolCooldowns[name] and "⏳" or "✓"
+			local cdText = ""
+			if ToolCooldowns[name] and ToolTimers[name] then
+				local rem = ToolTimers[name].duration - (tick() - ToolTimers[name].start)
+				if rem > 0 then cdText = "⏳" .. string.format("%.1f", rem) else cdText = "✓" end
+			else cdText = "✓" end
 			local fav = Favorites[name] and "⭐" or ""
 			local uses = ToolStats[name] and ToolStats[name].uses or 0
 			local streak = ToolStats[name] and ToolStats[name].streak or 0
 			local ev = (v.event and v.event ~= "") and "🔔" or ""
 			local ch = (v.chain and v.chain ~= "") and "🔗" or ""
-			local line = cd .. fav .. ev .. ch .. " " .. name .. " [" .. v.cooldown .. "s] x" .. uses
+			local line = cdText .. fav .. ev .. ch .. " " .. name .. " [" .. v.cooldown .. "s] x" .. uses
 			if streak > 1 then line = line .. " 🔥" .. streak end
 			if Favorites[name] then table.insert(favs, line) else table.insert(others, line) end
 		end
@@ -1532,8 +1626,7 @@ task.spawn(function()
 
 		local mc = {}; for mn, m in pairs(Macros) do
 			local lp = getgenv()["macro_loop_" .. mn] and " 🔁" or ""
-			local rp = m.repeats and m.repeats ~= 1 and (" x" .. m.repeats) or ""
-			table.insert(mc, "▶ " .. mn .. " (" .. #m.tools .. ", " .. m.delay .. "s)" .. rp .. lp)
+			table.insert(mc, "▶ " .. mn .. " (" .. #m.tools .. ", " .. m.delay .. "s x" .. (m.repeats or 1) .. ")" .. lp)
 		end
 		macroLabel.Text = #mc > 0 and table.concat(mc, "\n") or "No macros"
 
@@ -1555,7 +1648,7 @@ task.spawn(function()
 
 		local pfs = {}; for k, p in pairs(Profiles) do
 			local ptc = p.tools and #p.tools or 0
-			table.insert(pfs, "👤 " .. k .. " (" .. ptc .. " tools)" .. (k == currentProfile and " ◄" or ""))
+			table.insert(pfs, "👤 " .. k .. " (" .. ptc .. ")" .. (k == currentProfile and " ◄" or ""))
 		end
 		profLabel.Text = #pfs > 0 and table.concat(pfs, "\n") or "No profiles"
 
@@ -1567,33 +1660,41 @@ task.spawn(function()
 		local vc2 = 0; for _ in pairs(ToolVars) do vc2 = vc2 + 1 end
 		local sc3 = 0; for _ in pairs(Snippets) do sc3 = sc3 + 1 end
 		local pc2 = 0; for _ in pairs(Profiles) do pc2 = pc2 + 1 end
+		local elapsed = tick() - sessionStart
+		local mins = math.floor(elapsed / 60)
+		local secs = math.floor(elapsed % 60)
 		local st = {
 			"Tools:" .. tc .. " Saves:" .. sc2 .. " Macros:" .. mc2,
 			"Groups:" .. gc2 .. " Vars:" .. vc2 .. " Snips:" .. sc3,
-			"Profiles:" .. pc2 .. " Profile:" .. currentProfile,
+			"Profiles:" .. pc2 .. " Active:" .. currentProfile,
 			"Uses:" .. totalU .. " Errors:" .. totalE,
-			"Exec time:" .. string.format("%.2f", totalT) .. "s",
-			"Undo:" .. #UndoHistory .. " Keybinds:" .. #kbs
+			"Exec:" .. string.format("%.2f", totalT) .. "s",
+			"Undo:" .. #UndoHistory .. " KB:" .. #kbs,
+			"Created:" .. toolCreationCount .. " Session:" .. mins .. "m" .. secs .. "s"
 		}
 		local topN, topU = "N/A", 0
 		for n, s in pairs(ToolStats) do if s.uses > topU then topU = s.uses; topN = n end end
 		if topU > 0 then table.insert(st, "Top: " .. topN .. " (x" .. topU .. ")") end
 		local topS, topSN = 0, "N/A"
 		for n, s in pairs(ToolStats) do if s.bestStreak > topS then topS = s.bestStreak; topSN = n end end
-		if topS > 1 then table.insert(st, "Best streak: " .. topSN .. " (x" .. topS .. ")") end
+		if topS > 1 then table.insert(st, "Streak: " .. topSN .. " (x" .. topS .. ")") end
 		statsLabel.Text = table.concat(st, "\n")
 
-		task.wait(0.5)
+		if autoClearDupes then ScanAndClearAllDupes() end
+
+		task.wait(0.4)
 	end
 end)
 
-Player.CharacterAdded:Connect(function()
-	if not autoRespawnTools then return end
+Player.CharacterAdded:Connect(function(char)
 	task.wait(1)
+	WatchBackpack()
+	WatchChar()
+	if not autoRespawnTools then return end
 	local d = {}; for _, v in pairs(ActiveTools) do table.insert(d, {name = v.name, cooldown = v.cooldown, code = v.code, desc = v.desc, condition = v.condition, chain = v.chain, event = v.event}) end
 	for _, x in pairs(d) do SpawnTool(x.name, x.cooldown, x.code, x.desc, x.condition, x.chain, x.event) end
 	if #d > 0 then AddLog("Respawn: " .. #d .. " tools") end
 end)
 
 AddLog("Tools Creator V1.0 initialized")
-Notify("✦ Tools Creator V1.0 loaded!", Color3.fromRGB(155, 105, 250))
+Notify("✦ Tools Creator V1.0!", Color3.fromRGB(155, 105, 250))
