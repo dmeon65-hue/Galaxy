@@ -1,1962 +1,1599 @@
-local player = game.Players.LocalPlayer
-local pgui = player:WaitForChild("PlayerGui")
-local TweenService = game:GetService("TweenService")
+getgenv().ToolsCreator = true
+
+local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
-local TextService = game:GetService("TextService")
 local HttpService = game:GetService("HttpService")
+local Player = Players.LocalPlayer
 
-if not getgenv().ToolCreatorData then getgenv().ToolCreatorData = {} end
-if not getgenv().ToolCreatorFavorites then getgenv().ToolCreatorFavorites = {} end
-if not getgenv().ToolCreatorSettings then
-    getgenv().ToolCreatorSettings = {
-        theme = "galaxy",
-        animStars = true,
-        codeSize = 10,
-        autoSave = true,
-        soundFX = true,
-        snapToGrid = false,
-        compactMode = false,
-        toolHistory = {},
-        recentCodes = {},
-        keybind = Enum.KeyCode.RightShift
-    }
+local SavedTools = getgenv().TC_Saves or {}
+getgenv().TC_Saves = SavedTools
+local ActiveTools = {}
+local Connections = {}
+local ToolCooldowns = {}
+local ToolStats = {}
+local Favorites = getgenv().TC_Favs or {}
+getgenv().TC_Favs = Favorites
+local UndoHistory = {}
+local Keybinds = getgenv().TC_Keybinds or {}
+getgenv().TC_Keybinds = Keybinds
+local Macros = getgenv().TC_Macros or {}
+getgenv().TC_Macros = Macros
+local ToolGroups = getgenv().TC_Groups or {}
+getgenv().TC_Groups = ToolGroups
+local Profiles = getgenv().TC_Profiles or {}
+getgenv().TC_Profiles = Profiles
+local Snippets = getgenv().TC_Snippets or {}
+getgenv().TC_Snippets = Snippets
+local LogEntries = {}
+local ToolTimers = {}
+local ComboTracker = {}
+local ToolConditions = {}
+local ToolEvents = {}
+local ToolChains = {}
+local ToolVars = getgenv().TC_Vars or {}
+getgenv().TC_Vars = ToolVars
+local autoRespawnTools = true
+local logEnabled = true
+local minimized = false
+local guiOpen = false
+local cdOverlayEnabled = true
+local particleEnabled = true
+local antiDetect = false
+local currentProfile = "Default"
+local ToolSchedules = {}
+
+if Player:FindFirstChild("PlayerGui") and Player.PlayerGui:FindFirstChild("ToolsCreatorGui") then
+	Player.PlayerGui:FindFirstChild("ToolsCreatorGui"):Destroy()
 end
-if not getgenv().ToolCreatorTemplates then
-    getgenv().ToolCreatorTemplates = {
-        ["Kill Aura"] = "for _,v in pairs(game.Players:GetPlayers()) do\n  if v ~= game.Players.LocalPlayer and v.Character then\n    v.Character:FindFirstChild('Humanoid').Health = 0\n  end\nend",
-        ["Speed Boost"] = "game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = 100",
-        ["Jump Power"] = "game.Players.LocalPlayer.Character.Humanoid.JumpPower = 150",
-        ["TP To Mouse"] = "local m = game.Players.LocalPlayer:GetMouse()\nif m.Hit then\n  game.Players.LocalPlayer.Character:SetPrimaryPartCFrame(m.Hit + Vector3.new(0,3,0))\nend",
-        ["God Mode"] = "game.Players.LocalPlayer.Character.Humanoid.MaxHealth = math.huge\ngame.Players.LocalPlayer.Character.Humanoid.Health = math.huge",
-        ["Print Hello"] = "print('Hello from Tools Creator!')",
-        ["Invisible"] = "for _,v in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do\n  if v:IsA('BasePart') then v.Transparency = 1 end\n  if v:IsA('Decal') then v.Transparency = 1 end\nend",
-        ["Noclip"] = "getgenv().noclip = not getgenv().noclip\nif getgenv().noclip then\n  getgenv().noclipConn = game:GetService('RunService').Stepped:Connect(function()\n    for _,v in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do\n      if v:IsA('BasePart') then v.CanCollide = false end\n    end\n  end)\nelse\n  if getgenv().noclipConn then getgenv().noclipConn:Disconnect() end\nend",
-        ["Fly"] = "local bp = Instance.new('BodyPosition',game.Players.LocalPlayer.Character.HumanoidRootPart)\nbp.MaxForce = Vector3.new(math.huge,math.huge,math.huge)\nbp.Position = game.Players.LocalPlayer.Character.HumanoidRootPart.Position + Vector3.new(0,50,0)",
-        ["Reset Char"] = "game.Players.LocalPlayer.Character.Humanoid.Health = 0",
-        ["Fling Others"] = "for _,v in pairs(game.Players:GetPlayers()) do\n  if v ~= game.Players.LocalPlayer and v.Character and v.Character:FindFirstChild('HumanoidRootPart') then\n    v.Character.HumanoidRootPart.Velocity = Vector3.new(9999,9999,9999)\n  end\nend",
-        ["ESP Names"] = "for _,v in pairs(game.Players:GetPlayers()) do\n  if v ~= game.Players.LocalPlayer and v.Character and v.Character:FindFirstChild('Head') then\n    local bg = Instance.new('BillboardGui',v.Character.Head)\n    bg.Size = UDim2.new(0,100,0,30)\n    bg.StudsOffset = Vector3.new(0,3,0)\n    bg.AlwaysOnTop = true\n    local tl = Instance.new('TextLabel',bg)\n    tl.Size = UDim2.new(1,0,1,0)\n    tl.BackgroundTransparency = 1\n    tl.Text = v.Name\n    tl.TextColor3 = Color3.new(1,1,1)\n    tl.TextSize = 14\n  end\nend"
-    }
-end
-if not getgenv().ToolCreatorProfiles then getgenv().ToolCreatorProfiles = {} end
-if not getgenv().ToolCreatorSnippets then getgenv().ToolCreatorSnippets = {} end
 
-for _,v in pairs(pgui:GetChildren()) do
-    if v.Name == "ToolCreatorGui" then v:Destroy() end
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ToolsCreatorGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+if syn and syn.protect_gui then syn.protect_gui(ScreenGui) end
+ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+
+local function Tween(obj, props, dur)
+	TweenService:Create(obj, TweenInfo.new(dur or 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), props):Play()
 end
 
-local sg = Instance.new("ScreenGui")
-sg.Name = "ToolCreatorGui"
-sg.ResetOnSpawn = false
-sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-sg.Parent = pgui
+local function MakeDraggable(frame, handle)
+	handle = handle or frame
+	local dragging, dragInput, dragStart, startPos
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
+		end
+	end)
+	handle.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+			dragInput = input
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
 
-local themes = {
-    galaxy={bg=Color3.fromRGB(8,4,22),bar=Color3.fromRGB(20,9,50),accent=Color3.fromRGB(130,70,230),text=Color3.fromRGB(210,170,255),input=Color3.fromRGB(16,8,40),star1=Color3.fromRGB(180,140,255),star2=Color3.fromRGB(100,200,255),code=Color3.fromRGB(180,255,180),btn=Color3.fromRGB(48,14,115),dim=Color3.fromRGB(75,55,125),success=Color3.fromRGB(100,255,150),err=Color3.fromRGB(255,70,70),warn=Color3.fromRGB(255,200,80),card=Color3.fromRGB(18,9,42)},
-    nebula={bg=Color3.fromRGB(18,4,14),bar=Color3.fromRGB(45,9,32),accent=Color3.fromRGB(200,45,115),text=Color3.fromRGB(255,175,210),input=Color3.fromRGB(32,7,23),star1=Color3.fromRGB(255,135,195),star2=Color3.fromRGB(255,95,145),code=Color3.fromRGB(255,215,175),btn=Color3.fromRGB(95,14,55),dim=Color3.fromRGB(125,65,95),success=Color3.fromRGB(145,255,175),err=Color3.fromRGB(255,70,70),warn=Color3.fromRGB(255,200,80),card=Color3.fromRGB(35,8,24)},
-    void={bg=Color3.fromRGB(4,4,10),bar=Color3.fromRGB(10,10,28),accent=Color3.fromRGB(55,55,175),text=Color3.fromRGB(155,155,215),input=Color3.fromRGB(8,8,22),star1=Color3.fromRGB(115,115,255),star2=Color3.fromRGB(75,145,255),code=Color3.fromRGB(145,215,255),btn=Color3.fromRGB(28,28,95),dim=Color3.fromRGB(65,65,125),success=Color3.fromRGB(95,215,145),err=Color3.fromRGB(255,70,70),warn=Color3.fromRGB(255,200,80),card=Color3.fromRGB(12,12,30)},
-    emerald={bg=Color3.fromRGB(4,16,8),bar=Color3.fromRGB(8,32,16),accent=Color3.fromRGB(35,175,75),text=Color3.fromRGB(165,235,185),input=Color3.fromRGB(6,22,12),star1=Color3.fromRGB(95,255,145),star2=Color3.fromRGB(55,195,115),code=Color3.fromRGB(195,255,195),btn=Color3.fromRGB(14,75,32),dim=Color3.fromRGB(45,115,65),success=Color3.fromRGB(95,255,145),err=Color3.fromRGB(255,70,70),warn=Color3.fromRGB(255,200,80),card=Color3.fromRGB(8,28,14)},
-    crimson={bg=Color3.fromRGB(18,4,4),bar=Color3.fromRGB(45,10,10),accent=Color3.fromRGB(195,35,35),text=Color3.fromRGB(255,175,175),input=Color3.fromRGB(32,8,8),star1=Color3.fromRGB(255,115,115),star2=Color3.fromRGB(255,75,55),code=Color3.fromRGB(255,215,195),btn=Color3.fromRGB(115,18,18),dim=Color3.fromRGB(135,55,55),success=Color3.fromRGB(95,255,145),err=Color3.fromRGB(255,70,70),warn=Color3.fromRGB(255,200,80),card=Color3.fromRGB(35,8,8)},
-    aurora={bg=Color3.fromRGB(4,10,18),bar=Color3.fromRGB(8,22,42),accent=Color3.fromRGB(35,175,195),text=Color3.fromRGB(175,235,255),input=Color3.fromRGB(6,16,30),star1=Color3.fromRGB(95,215,255),star2=Color3.fromRGB(55,255,195),code=Color3.fromRGB(195,255,225),btn=Color3.fromRGB(14,65,85),dim=Color3.fromRGB(45,95,125),success=Color3.fromRGB(95,255,195),err=Color3.fromRGB(255,70,70),warn=Color3.fromRGB(255,200,80),card=Color3.fromRGB(8,20,35)},
-    midnight={bg=Color3.fromRGB(6,6,16),bar=Color3.fromRGB(14,14,35),accent=Color3.fromRGB(90,90,200),text=Color3.fromRGB(180,180,230),input=Color3.fromRGB(10,10,26),star1=Color3.fromRGB(140,140,255),star2=Color3.fromRGB(100,130,255),code=Color3.fromRGB(200,230,255),btn=Color3.fromRGB(40,40,110),dim=Color3.fromRGB(80,80,140),success=Color3.fromRGB(100,255,160),err=Color3.fromRGB(255,70,70),warn=Color3.fromRGB(255,200,80),card=Color3.fromRGB(14,14,34)},
-    solar={bg=Color3.fromRGB(20,12,4),bar=Color3.fromRGB(45,28,8),accent=Color3.fromRGB(220,150,30),text=Color3.fromRGB(255,230,180),input=Color3.fromRGB(35,22,6),star1=Color3.fromRGB(255,210,100),star2=Color3.fromRGB(255,180,60),code=Color3.fromRGB(255,240,200),btn=Color3.fromRGB(120,80,10),dim=Color3.fromRGB(150,110,50),success=Color3.fromRGB(100,255,150),err=Color3.fromRGB(255,70,70),warn=Color3.fromRGB(255,200,80),card=Color3.fromRGB(40,25,8)}
+local function AddLog(e)
+	if not logEnabled then return end
+	table.insert(LogEntries, 1, os.date("[%H:%M:%S] ") .. e)
+	if #LogEntries > 100 then table.remove(LogEntries) end
+end
+
+local NotifQueue = {}
+local NotifActive = false
+
+local function Notify(msg, color)
+	table.insert(NotifQueue, {msg = msg, color = color or Color3.fromRGB(130, 70, 220)})
+	if NotifActive then return end
+	NotifActive = true
+	task.spawn(function()
+		while #NotifQueue > 0 do
+			local d = table.remove(NotifQueue, 1)
+			local nf = Instance.new("Frame")
+			nf.Size = UDim2.new(0, 180, 0, 36)
+			nf.Position = UDim2.new(0.5, -90, 1, 5)
+			nf.BackgroundColor3 = Color3.fromRGB(8, 2, 22)
+			nf.BorderSizePixel = 0
+			nf.ZIndex = 200
+			nf.Parent = ScreenGui
+			Instance.new("UICorner", nf).CornerRadius = UDim.new(0, 9)
+			local ns = Instance.new("UIStroke", nf)
+			ns.Color = d.color
+			ns.Thickness = 1.3
+			ns.Transparency = 0.2
+			local ng = Instance.new("UIGradient", nf)
+			ng.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(14, 4, 32)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(6, 1, 16))
+			})
+			ng.Rotation = 45
+			local nl = Instance.new("TextLabel", nf)
+			nl.Size = UDim2.new(1, -10, 1, 0)
+			nl.Position = UDim2.new(0, 5, 0, 0)
+			nl.BackgroundTransparency = 1
+			nl.Text = msg
+			nl.TextColor3 = Color3.fromRGB(230, 215, 255)
+			nl.TextSize = 9
+			nl.Font = Enum.Font.GothamBold
+			nl.TextWrapped = true
+			nl.ZIndex = 201
+			if particleEnabled then
+				for i = 1, 3 do
+					local p = Instance.new("Frame", nf)
+					p.Size = UDim2.new(0, 2, 0, 2)
+					p.Position = UDim2.new(math.random(10, 90) / 100, 0, math.random(20, 80) / 100, 0)
+					p.BackgroundColor3 = d.color
+					p.BackgroundTransparency = 0.4
+					p.BorderSizePixel = 0
+					p.ZIndex = 202
+					Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
+					task.spawn(function()
+						Tween(p, {BackgroundTransparency = 1, Position = UDim2.new(p.Position.X.Scale, 0, -0.3, 0)}, 1.2)
+					end)
+				end
+			end
+			Tween(nf, {Position = UDim2.new(0.5, -90, 1, -52)}, 0.3)
+			task.wait(1.5)
+			Tween(nf, {Position = UDim2.new(0.5, -90, 1, 10), BackgroundTransparency = 1}, 0.35)
+			Tween(nl, {TextTransparency = 1}, 0.35)
+			Tween(ns, {Transparency = 1}, 0.35)
+			task.wait(0.4)
+			nf:Destroy()
+		end
+		NotifActive = false
+	end)
+end
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 32, 0, 32)
+ToggleBtn.Position = UDim2.new(1, -40, 0, 8)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(8, 2, 20)
+ToggleBtn.Text = "★"
+ToggleBtn.TextColor3 = Color3.fromRGB(180, 130, 255)
+ToggleBtn.TextSize = 14
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.BorderSizePixel = 0
+ToggleBtn.ZIndex = 100
+ToggleBtn.Parent = ScreenGui
+Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 10)
+local tgS = Instance.new("UIStroke", ToggleBtn)
+tgS.Color = Color3.fromRGB(120, 60, 200)
+tgS.Thickness = 1.4
+MakeDraggable(ToggleBtn)
+
+local CdOverlay = Instance.new("Frame")
+CdOverlay.Size = UDim2.new(0, 95, 0, 18)
+CdOverlay.Position = UDim2.new(0.5, -47, 0, 2)
+CdOverlay.BackgroundColor3 = Color3.fromRGB(6, 1, 16)
+CdOverlay.BackgroundTransparency = 0.25
+CdOverlay.BorderSizePixel = 0
+CdOverlay.ZIndex = 150
+CdOverlay.Visible = false
+CdOverlay.Parent = ScreenGui
+Instance.new("UICorner", CdOverlay).CornerRadius = UDim.new(0, 6)
+Instance.new("UIStroke", CdOverlay).Color = Color3.fromRGB(80, 40, 160)
+
+local CdBar = Instance.new("Frame")
+CdBar.Size = UDim2.new(0, 0, 1, 0)
+CdBar.BackgroundColor3 = Color3.fromRGB(120, 60, 220)
+CdBar.BorderSizePixel = 0
+CdBar.ZIndex = 151
+CdBar.Parent = CdOverlay
+Instance.new("UICorner", CdBar).CornerRadius = UDim.new(0, 6)
+
+local CdLabel = Instance.new("TextLabel")
+CdLabel.Size = UDim2.new(1, 0, 1, 0)
+CdLabel.BackgroundTransparency = 1
+CdLabel.Text = ""
+CdLabel.TextColor3 = Color3.fromRGB(225, 205, 255)
+CdLabel.TextSize = 8
+CdLabel.Font = Enum.Font.GothamBold
+CdLabel.ZIndex = 152
+CdLabel.Parent = CdOverlay
+
+task.spawn(function()
+	local h = 0
+	while ScreenGui.Parent do
+		h = (h + 0.002) % 1
+		tgS.Color = Color3.fromHSV(h, 0.55, 0.9)
+		task.wait(0.05)
+	end
+end)
+
+local fullSize = UDim2.new(0, 245, 0, 365)
+local miniSize = UDim2.new(0, 245, 0, 24)
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = fullSize
+MainFrame.Position = UDim2.new(0.5, -122, 0.5, -182)
+MainFrame.BackgroundColor3 = Color3.fromRGB(4, 1, 12)
+MainFrame.BorderSizePixel = 0
+MainFrame.Visible = false
+MainFrame.ZIndex = 50
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+local mStroke = Instance.new("UIStroke", MainFrame)
+mStroke.Color = Color3.fromRGB(90, 45, 170)
+mStroke.Thickness = 1.6
+
+local GradBG = Instance.new("Frame")
+GradBG.Size = UDim2.new(1, 0, 1, 0)
+GradBG.BackgroundColor3 = Color3.fromRGB(5, 1, 15)
+GradBG.BorderSizePixel = 0
+GradBG.ZIndex = 50
+GradBG.Parent = MainFrame
+Instance.new("UICorner", GradBG).CornerRadius = UDim.new(0, 12)
+local grad = Instance.new("UIGradient", GradBG)
+grad.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(7, 2, 22)),
+	ColorSequenceKeypoint.new(0.35, Color3.fromRGB(2, 0, 8)),
+	ColorSequenceKeypoint.new(0.65, Color3.fromRGB(9, 3, 26)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(4, 1, 14))
+})
+
+task.spawn(function()
+	local r = 0
+	while MainFrame.Parent do
+		r = (r + 0.25) % 360
+		grad.Rotation = r
+		task.wait(0.04)
+	end
+end)
+
+task.spawn(function()
+	local h = 0
+	while MainFrame.Parent do
+		h = (h + 0.001) % 1
+		mStroke.Color = Color3.fromHSV(h, 0.5, 0.72)
+		task.wait(0.04)
+	end
+end)
+
+for i = 1, 70 do
+	local s = Instance.new("Frame")
+	local sz = math.random(1, 3)
+	s.Size = UDim2.new(0, sz, 0, sz)
+	s.Position = UDim2.new(math.random(1, 99)/100, 0, math.random(1, 99)/100, 0)
+	s.BackgroundColor3 = Color3.fromHSV(math.random(55, 85)/100, math.random(8, 45)/100, math.random(75, 100)/100)
+	s.BackgroundTransparency = math.random(15, 70)/100
+	s.BorderSizePixel = 0
+	s.ZIndex = 51
+	s.Parent = MainFrame
+	Instance.new("UICorner", s).CornerRadius = UDim.new(1, 0)
+	task.spawn(function()
+		while s.Parent do
+			Tween(s, {
+				BackgroundTransparency = math.random(10, 90)/100,
+				Size = UDim2.new(0, math.random(1, sz+1), 0, math.random(1, sz+1))
+			}, math.random(5, 16)/10)
+			task.wait(math.random(5, 16)/10)
+		end
+	end)
+end
+
+local nebC = {
+	Color3.fromRGB(45, 12, 105), Color3.fromRGB(22, 6, 65),
+	Color3.fromRGB(65, 22, 135), Color3.fromRGB(35, 8, 85),
+	Color3.fromRGB(18, 35, 95), Color3.fromRGB(55, 15, 80)
+}
+for i = 1, 6 do
+	local n = Instance.new("Frame")
+	n.Size = UDim2.new(0, math.random(30, 95), 0, math.random(30, 95))
+	n.Position = UDim2.new(math.random(0, 80)/100, 0, math.random(0, 80)/100, 0)
+	n.BackgroundColor3 = nebC[i]
+	n.BackgroundTransparency = 0.91
+	n.BorderSizePixel = 0
+	n.ZIndex = 51
+	n.Parent = MainFrame
+	Instance.new("UICorner", n).CornerRadius = UDim.new(1, 0)
+	task.spawn(function()
+		while n.Parent do
+			Tween(n, {
+				BackgroundTransparency = math.random(87, 96)/100,
+				Position = UDim2.new(math.random(0, 80)/100, 0, math.random(0, 80)/100, 0),
+				BackgroundColor3 = Color3.fromHSV(math.random(60, 85)/100, math.random(30, 60)/100, math.random(20, 50)/100)
+			}, math.random(25, 55)/10)
+			task.wait(math.random(25, 55)/10)
+		end
+	end)
+end
+
+local shootingStar
+task.spawn(function()
+	while MainFrame.Parent do
+		task.wait(math.random(40, 80)/10)
+		if MainFrame.Visible and particleEnabled then
+			local ss = Instance.new("Frame")
+			ss.Size = UDim2.new(0, math.random(15, 35), 0, 1)
+			local sy = math.random(5, 95)/100
+			ss.Position = UDim2.new(-0.1, 0, sy, 0)
+			ss.BackgroundColor3 = Color3.fromRGB(220, 210, 255)
+			ss.BackgroundTransparency = 0.3
+			ss.BorderSizePixel = 0
+			ss.ZIndex = 52
+			ss.Rotation = math.random(-15, 15)
+			ss.Parent = MainFrame
+			Instance.new("UICorner", ss).CornerRadius = UDim.new(0, 1)
+			Tween(ss, {Position = UDim2.new(1.1, 0, sy + math.random(-10, 10)/100, 0), BackgroundTransparency = 1}, math.random(8, 14)/10)
+			task.delay(1.5, function() ss:Destroy() end)
+		end
+	end
+end)
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 24)
+TitleBar.BackgroundColor3 = Color3.fromRGB(10, 3, 26)
+TitleBar.BackgroundTransparency = 0.08
+TitleBar.BorderSizePixel = 0
+TitleBar.ZIndex = 55
+TitleBar.Parent = MainFrame
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 12)
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, -60, 1, 0)
+TitleLabel.Position = UDim2.new(0, 8, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "✦ Tools Creator V1.0"
+TitleLabel.TextColor3 = Color3.fromRGB(215, 180, 255)
+TitleLabel.TextSize = 10
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.ZIndex = 56
+TitleLabel.Parent = TitleBar
+MakeDraggable(MainFrame, TitleBar)
+
+local CountLabel = Instance.new("TextLabel")
+CountLabel.Size = UDim2.new(0, 32, 1, 0)
+CountLabel.Position = UDim2.new(1, -58, 0, 0)
+CountLabel.BackgroundTransparency = 1
+CountLabel.Text = "[0]"
+CountLabel.TextColor3 = Color3.fromRGB(140, 210, 140)
+CountLabel.TextSize = 8
+CountLabel.Font = Enum.Font.GothamBold
+CountLabel.ZIndex = 56
+CountLabel.Parent = TitleBar
+
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 18, 0, 18)
+MinBtn.Position = UDim2.new(1, -22, 0, 3)
+MinBtn.BackgroundColor3 = Color3.fromRGB(32, 10, 68)
+MinBtn.BorderSizePixel = 0
+MinBtn.Text = "−"
+MinBtn.TextColor3 = Color3.fromRGB(210, 180, 255)
+MinBtn.TextSize = 12
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.ZIndex = 57
+MinBtn.Parent = TitleBar
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 5)
+MinBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	Tween(MainFrame, {Size = minimized and miniSize or fullSize}, 0.25)
+	MinBtn.Text = minimized and "+" or "−"
+end)
+
+local TabScroll = Instance.new("ScrollingFrame")
+TabScroll.Size = UDim2.new(1, -4, 0, 16)
+TabScroll.Position = UDim2.new(0, 2, 0, 26)
+TabScroll.BackgroundTransparency = 1
+TabScroll.BorderSizePixel = 0
+TabScroll.ScrollBarThickness = 0
+TabScroll.ScrollingDirection = Enum.ScrollingDirection.X
+TabScroll.CanvasSize = UDim2.new(0, 0, 0, 16)
+TabScroll.ZIndex = 55
+TabScroll.Parent = MainFrame
+
+local TabLayout = Instance.new("UIListLayout", TabScroll)
+TabLayout.FillDirection = Enum.FillDirection.Horizontal
+TabLayout.Padding = UDim.new(0, 2)
+TabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+TabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	TabScroll.CanvasSize = UDim2.new(0, TabLayout.AbsoluteContentSize.X + 4, 0, 16)
+end)
+
+local Pages = {}
+local TabButtons = {}
+
+local function CreatePage(name)
+	local p = Instance.new("ScrollingFrame")
+	p.Name = name
+	p.Size = UDim2.new(1, -4, 1, -46)
+	p.Position = UDim2.new(0, 2, 0, 44)
+	p.BackgroundTransparency = 1
+	p.BorderSizePixel = 0
+	p.ScrollBarThickness = 3
+	p.ScrollBarImageColor3 = Color3.fromRGB(100, 50, 190)
+	p.CanvasSize = UDim2.new(0, 0, 0, 0)
+	p.ZIndex = 54
+	p.Visible = false
+	p.Parent = MainFrame
+	local l = Instance.new("UIListLayout", p)
+	l.Padding = UDim.new(0, 3)
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+	l:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		p.CanvasSize = UDim2.new(0, 0, 0, l.AbsoluteContentSize.Y + 10)
+	end)
+	Pages[name] = p
+	return p
+end
+
+local function CreateTab(name, icon, order)
+	local t = Instance.new("TextButton")
+	t.Size = UDim2.new(0, 30, 1, 0)
+	t.BackgroundColor3 = Color3.fromRGB(16, 5, 36)
+	t.BorderSizePixel = 0
+	t.Text = icon or name:sub(1, 2)
+	t.TextColor3 = Color3.fromRGB(115, 85, 175)
+	t.TextSize = 7
+	t.Font = Enum.Font.GothamBold
+	t.ZIndex = 56
+	t.LayoutOrder = order or 0
+	t.Parent = TabScroll
+	Instance.new("UICorner", t).CornerRadius = UDim.new(0, 4)
+	TabButtons[name] = t
+	t.MouseButton1Click:Connect(function()
+		for _, pg in pairs(Pages) do pg.Visible = false end
+		for _, c in pairs(TabScroll:GetChildren()) do
+			if c:IsA("TextButton") then
+				Tween(c, {BackgroundColor3 = Color3.fromRGB(16, 5, 36), TextColor3 = Color3.fromRGB(115, 85, 175)}, 0.1)
+			end
+		end
+		Pages[name].Visible = true
+		Tween(t, {BackgroundColor3 = Color3.fromRGB(48, 18, 100), TextColor3 = Color3.fromRGB(240, 220, 255)}, 0.1)
+	end)
+	return t
+end
+
+local function SwitchTab(name)
+	for _, pg in pairs(Pages) do pg.Visible = false end
+	for _, c in pairs(TabScroll:GetChildren()) do
+		if c:IsA("TextButton") then
+			Tween(c, {BackgroundColor3 = Color3.fromRGB(16, 5, 36), TextColor3 = Color3.fromRGB(115, 85, 175)}, 0.1)
+		end
+	end
+	Pages[name].Visible = true
+	if TabButtons[name] then
+		Tween(TabButtons[name], {BackgroundColor3 = Color3.fromRGB(48, 18, 100), TextColor3 = Color3.fromRGB(240, 220, 255)}, 0.1)
+	end
+end
+
+local function AL(pg, txt, ord)
+	local l = Instance.new("TextLabel")
+	l.Size = UDim2.new(1, 0, 0, 12)
+	l.BackgroundTransparency = 1
+	l.Text = txt
+	l.TextColor3 = Color3.fromRGB(175, 145, 245)
+	l.TextSize = 9
+	l.Font = Enum.Font.GothamBold
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.LayoutOrder = ord
+	l.ZIndex = 55
+	l.Parent = pg
+	return l
+end
+
+local function AI(pg, ph, ord, multi)
+	local t = Instance.new("TextBox")
+	t.Size = UDim2.new(1, 0, 0, multi and 55 or 20)
+	t.BackgroundColor3 = Color3.fromRGB(10, 3, 25)
+	t.BorderSizePixel = 0
+	t.PlaceholderText = ph
+	t.PlaceholderColor3 = Color3.fromRGB(55, 38, 95)
+	t.Text = ""
+	t.TextColor3 = Color3.fromRGB(225, 205, 255)
+	t.TextSize = multi and 8 or 9
+	t.Font = multi and Enum.Font.Code or Enum.Font.Gotham
+	t.ClearTextOnFocus = false
+	t.LayoutOrder = ord
+	t.ZIndex = 55
+	t.TextWrapped = true
+	t.MultiLine = multi or false
+	if multi then t.TextYAlignment = Enum.TextYAlignment.Top end
+	t.Parent = pg
+	Instance.new("UICorner", t).CornerRadius = UDim.new(0, 5)
+	local s = Instance.new("UIStroke", t)
+	s.Color = Color3.fromRGB(50, 22, 105)
+	s.Thickness = 1
+	t.Focused:Connect(function() Tween(s, {Color = Color3.fromRGB(160, 95, 255)}, 0.12) end)
+	t.FocusLost:Connect(function() Tween(s, {Color = Color3.fromRGB(50, 22, 105)}, 0.12) end)
+	return t
+end
+
+local function AB(pg, txt, ord, cb, clr)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1, 0, 0, 20)
+	b.BackgroundColor3 = clr or Color3.fromRGB(25, 8, 58)
+	b.BorderSizePixel = 0
+	b.Text = txt
+	b.TextColor3 = Color3.fromRGB(225, 195, 255)
+	b.TextSize = 9
+	b.Font = Enum.Font.GothamBold
+	b.LayoutOrder = ord
+	b.ZIndex = 55
+	b.Parent = pg
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+	local bs = Instance.new("UIStroke", b)
+	bs.Color = Color3.fromRGB(75, 35, 155)
+	bs.Thickness = 1
+	b.MouseEnter:Connect(function()
+		Tween(b, {BackgroundColor3 = Color3.fromRGB(52, 20, 110)}, 0.08)
+		Tween(bs, {Color = Color3.fromRGB(170, 105, 255)}, 0.08)
+	end)
+	b.MouseLeave:Connect(function()
+		Tween(b, {BackgroundColor3 = clr or Color3.fromRGB(25, 8, 58)}, 0.08)
+		Tween(bs, {Color = Color3.fromRGB(75, 35, 155)}, 0.08)
+	end)
+	b.MouseButton1Click:Connect(cb)
+	return b
+end
+
+local function AS(pg, ord)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, 2)
+	f.BackgroundColor3 = Color3.fromRGB(42, 18, 90)
+	f.BackgroundTransparency = 0.45
+	f.BorderSizePixel = 0
+	f.LayoutOrder = ord
+	f.ZIndex = 54
+	f.Parent = pg
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 1)
+end
+
+local function AIB(pg, ord, h)
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 0, h or 55)
+	f.BackgroundColor3 = Color3.fromRGB(7, 2, 19)
+	f.BorderSizePixel = 0
+	f.LayoutOrder = ord
+	f.ZIndex = 55
+	f.Parent = pg
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 5)
+	Instance.new("UIStroke", f).Color = Color3.fromRGB(45, 20, 100)
+	local l = Instance.new("TextLabel")
+	l.Size = UDim2.new(1, -6, 1, -4)
+	l.Position = UDim2.new(0, 3, 0, 2)
+	l.BackgroundTransparency = 1
+	l.Text = ""
+	l.TextColor3 = Color3.fromRGB(165, 135, 225)
+	l.TextSize = 8
+	l.Font = Enum.Font.Gotham
+	l.TextWrapped = true
+	l.TextYAlignment = Enum.TextYAlignment.Top
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.ZIndex = 56
+	l.Parent = f
+	return l
+end
+
+local function ATog(pg, txt, ord, def, cb)
+	local h = Instance.new("Frame")
+	h.Size = UDim2.new(1, 0, 0, 18)
+	h.BackgroundTransparency = 1
+	h.LayoutOrder = ord
+	h.ZIndex = 55
+	h.Parent = pg
+	local lb = Instance.new("TextLabel", h)
+	lb.Size = UDim2.new(1, -38, 1, 0)
+	lb.BackgroundTransparency = 1
+	lb.Text = txt
+	lb.TextColor3 = Color3.fromRGB(175, 145, 245)
+	lb.TextSize = 8
+	lb.Font = Enum.Font.GothamBold
+	lb.TextXAlignment = Enum.TextXAlignment.Left
+	lb.ZIndex = 55
+	local tb = Instance.new("TextButton", h)
+	tb.Size = UDim2.new(0, 32, 0, 14)
+	tb.Position = UDim2.new(1, -34, 0.5, -7)
+	tb.BackgroundColor3 = def and Color3.fromRGB(45, 165, 85) or Color3.fromRGB(50, 18, 70)
+	tb.BorderSizePixel = 0
+	tb.Text = def and "ON" or "OFF"
+	tb.TextColor3 = Color3.fromRGB(230, 230, 255)
+	tb.TextSize = 7
+	tb.Font = Enum.Font.GothamBold
+	tb.ZIndex = 56
+	Instance.new("UICorner", tb).CornerRadius = UDim.new(0, 4)
+	local st = def
+	tb.MouseButton1Click:Connect(function()
+		st = not st
+		Tween(tb, {BackgroundColor3 = st and Color3.fromRGB(45, 165, 85) or Color3.fromRGB(50, 18, 70)}, 0.12)
+		tb.Text = st and "ON" or "OFF"
+		if cb then cb(st) end
+	end)
+	return function() return st end
+end
+
+local function ADrop(pg, txt, opts, ord, cb)
+	local h = Instance.new("Frame")
+	h.Size = UDim2.new(1, 0, 0, 20)
+	h.BackgroundTransparency = 1
+	h.LayoutOrder = ord
+	h.ZIndex = 55
+	h.ClipsDescendants = false
+	h.Parent = pg
+	local lb = Instance.new("TextLabel", h)
+	lb.Size = UDim2.new(0.42, 0, 1, 0)
+	lb.BackgroundTransparency = 1
+	lb.Text = txt
+	lb.TextColor3 = Color3.fromRGB(175, 145, 245)
+	lb.TextSize = 8
+	lb.Font = Enum.Font.GothamBold
+	lb.TextXAlignment = Enum.TextXAlignment.Left
+	lb.ZIndex = 55
+	local sel = opts[1] or ""
+	local db = Instance.new("TextButton", h)
+	db.Size = UDim2.new(0.56, 0, 1, 0)
+	db.Position = UDim2.new(0.44, 0, 0, 0)
+	db.BackgroundColor3 = Color3.fromRGB(18, 6, 42)
+	db.BorderSizePixel = 0
+	db.Text = "▼ " .. sel
+	db.TextColor3 = Color3.fromRGB(205, 185, 255)
+	db.TextSize = 8
+	db.Font = Enum.Font.GothamBold
+	db.ZIndex = 60
+	Instance.new("UICorner", db).CornerRadius = UDim.new(0, 4)
+	local exp = false
+	local of = Instance.new("Frame", h)
+	of.Size = UDim2.new(0.56, 0, 0, 0)
+	of.Position = UDim2.new(0.44, 0, 1, 2)
+	of.BackgroundColor3 = Color3.fromRGB(12, 4, 32)
+	of.BorderSizePixel = 0
+	of.ZIndex = 70
+	of.ClipsDescendants = true
+	of.Visible = false
+	Instance.new("UICorner", of).CornerRadius = UDim.new(0, 4)
+	local ol = Instance.new("UIListLayout", of)
+	ol.Padding = UDim.new(0, 1)
+	for _, o in ipairs(opts) do
+		local ob = Instance.new("TextButton", of)
+		ob.Size = UDim2.new(1, 0, 0, 16)
+		ob.BackgroundColor3 = Color3.fromRGB(20, 7, 45)
+		ob.BorderSizePixel = 0
+		ob.Text = o
+		ob.TextColor3 = Color3.fromRGB(195, 175, 245)
+		ob.TextSize = 8
+		ob.Font = Enum.Font.Gotham
+		ob.ZIndex = 71
+		ob.MouseButton1Click:Connect(function()
+			sel = o
+			db.Text = "▼ " .. o
+			exp = false
+			of.Visible = false
+			if cb then cb(o) end
+		end)
+	end
+	db.MouseButton1Click:Connect(function()
+		exp = not exp
+		of.Visible = exp
+		of.Size = exp and UDim2.new(0.56, 0, 0, #opts * 17) or UDim2.new(0.56, 0, 0, 0)
+	end)
+	return function() return sel end
+end
+
+local function DestroyTool(tn)
+	if Connections[tn] then Connections[tn]:Disconnect(); Connections[tn] = nil end
+	if ToolEvents[tn] then
+		for _, c in pairs(ToolEvents[tn]) do pcall(function() c:Disconnect() end) end
+		ToolEvents[tn] = nil
+	end
+	if ToolSchedules[tn] then ToolSchedules[tn] = nil end
+	ToolCooldowns[tn] = nil
+	ToolStats[tn] = nil
+	ToolTimers[tn] = nil
+	ToolConditions[tn] = nil
+	ToolChains[tn] = nil
+	local bp = Player:FindFirstChild("Backpack")
+	local char = Player.Character
+	if bp then for _, t in pairs(bp:GetChildren()) do if t:IsA("Tool") and t.Name == tn then t:Destroy() end end end
+	if char then for _, t in pairs(char:GetChildren()) do if t:IsA("Tool") and t.Name == tn then t:Destroy() end end end
+	ActiveTools[tn] = nil
+end
+
+local function SpawnTool(tn, cd, code, desc, cond, chain, event, schedule)
+	DestroyTool(tn)
+	local bp = Player:FindFirstChild("Backpack")
+	if not bp then return end
+	local cooldown = tonumber(cd) or 0
+	local tool = Instance.new("Tool")
+	tool.Name = tn
+	tool.RequiresHandle = false
+	tool.CanBeDropped = true
+	tool.ToolTip = (desc and desc ~= "") and desc or (tn .. " [" .. cd .. "s]")
+	tool.Parent = bp
+	ToolCooldowns[tn] = false
+	ToolStats[tn] = {uses = 0, lastUsed = "Never", errors = 0, created = os.date("%H:%M:%S"), totalTime = 0, streak = 0, bestStreak = 0}
+	ToolConditions[tn] = cond or ""
+	ToolChains[tn] = chain or ""
+	local execFn = function()
+		if ToolCooldowns[tn] then return end
+		if cond and cond ~= "" then
+			local cOk, cR = pcall(function()
+				local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()})
+				return setfenv(loadstring("return " .. cond), env)()
+			end)
+			if not cOk or not cR then AddLog("Cond fail: " .. tn); return end
+		end
+		ToolCooldowns[tn] = true
+		ToolStats[tn].uses = ToolStats[tn].uses + 1
+		ToolStats[tn].lastUsed = os.date("%H:%M:%S")
+		ToolStats[tn].streak = ToolStats[tn].streak + 1
+		if ToolStats[tn].streak > ToolStats[tn].bestStreak then ToolStats[tn].bestStreak = ToolStats[tn].streak end
+		ToolTimers[tn] = {start = tick(), duration = cooldown}
+		if cdOverlayEnabled then CdOverlay.Visible = true; CdLabel.Text = tn end
+		local st = tick()
+		local ok, err = pcall(function()
+			local env = setmetatable({vars = ToolVars, player = Player, tool = tool}, {__index = getfenv()})
+			setfenv(loadstring(code), env)()
+		end)
+		local el = tick() - st
+		ToolStats[tn].totalTime = ToolStats[tn].totalTime + el
+		if not ok then
+			ToolStats[tn].errors = ToolStats[tn].errors + 1
+			ToolStats[tn].streak = 0
+			AddLog("ERR [" .. tn .. "]: " .. tostring(err))
+		else
+			AddLog("Use: " .. tn .. " (" .. string.format("%.3f", el) .. "s)")
+		end
+		table.insert(ComboTracker, 1, {name = tn, time = tick()})
+		if #ComboTracker > 25 then table.remove(ComboTracker) end
+		if chain and chain ~= "" then
+			task.spawn(function()
+				task.wait(0.1)
+				for ct in chain:gmatch("[^,]+") do
+					ct = ct:match("^%s*(.-)%s*$")
+					if ActiveTools[ct] and ct ~= tn then
+						pcall(function()
+							local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()})
+							setfenv(loadstring(ActiveTools[ct].code), env)()
+						end)
+						AddLog("Chain: " .. tn .. " → " .. ct)
+						task.wait(0.05)
+					end
+				end
+			end)
+		end
+		if cooldown > 0 then
+			task.spawn(function()
+				local t = tick()
+				while tick() - t < cooldown and ToolTimers[tn] do
+					local pct = (tick() - t) / cooldown
+					CdBar.Size = UDim2.new(math.clamp(1 - pct, 0, 1), 0, 1, 0)
+					CdBar.BackgroundColor3 = Color3.fromRGB(
+						math.floor(120 + pct * 80),
+						math.floor(60 - pct * 40),
+						math.floor(220 - pct * 100)
+					)
+					if cdOverlayEnabled then CdLabel.Text = tn .. " " .. string.format("%.1f", cooldown - (tick() - t)) .. "s" end
+					task.wait(0.04)
+				end
+				ToolCooldowns[tn] = false
+				ToolTimers[tn] = nil
+				if not next(ToolTimers) then CdOverlay.Visible = false end
+			end)
+		else
+			ToolCooldowns[tn] = false
+			ToolTimers[tn] = nil
+			task.delay(0.4, function() if not next(ToolTimers) then CdOverlay.Visible = false end end)
+		end
+	end
+	local conn = tool.Activated:Connect(execFn)
+	Connections[tn] = conn
+	if event and event ~= "" then
+		ToolEvents[tn] = {}
+		if event:lower():find("loop:") then
+			local interval = tonumber(event:match("loop:(%d+%.?%d*)")) or 1
+			ToolSchedules[tn] = true
+			task.spawn(function()
+				while ToolSchedules[tn] and ActiveTools[tn] do
+					pcall(function()
+						local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()})
+						setfenv(loadstring(code), env)()
+					end)
+					task.wait(interval)
+				end
+			end)
+			AddLog("Loop event: " .. tn .. " every " .. interval .. "s")
+		end
+		if event:lower():find("heartbeat") then
+			local hbConn = RunService.Heartbeat:Connect(function()
+				pcall(function()
+					local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()})
+					setfenv(loadstring(code), env)()
+				end)
+			end)
+			table.insert(ToolEvents[tn], hbConn)
+			AddLog("Heartbeat event: " .. tn)
+		end
+		if event:lower():find("damage") then
+			task.spawn(function()
+				while ActiveTools[tn] do
+					local char = Player.Character
+					if char then
+						local hum = char:FindFirstChildOfClass("Humanoid")
+						if hum then
+							local hp = hum.Health
+							task.wait(0.1)
+							if hum.Health < hp then
+								pcall(function()
+									local env = setmetatable({vars = ToolVars, player = Player, damage = hp - hum.Health}, {__index = getfenv()})
+									setfenv(loadstring(code), env)()
+								end)
+								AddLog("Damage event: " .. tn)
+							end
+						else
+							task.wait(0.5)
+						end
+					else
+						task.wait(0.5)
+					end
+				end
+			end)
+		end
+	end
+	ActiveTools[tn] = {name = tn, cooldown = cd, code = code, desc = desc or "", condition = cond or "", chain = chain or "", event = event or "", schedule = schedule or ""}
+	AddLog("Spawned: " .. tn)
+end
+
+local createPage = CreatePage("Create")
+local managePage = CreatePage("Manage")
+local savePage = CreatePage("Saves")
+local macroPage = CreatePage("Macro")
+local groupPage = CreatePage("Groups")
+local varPage = CreatePage("Vars")
+local snippetPage = CreatePage("Snippet")
+local profilePage = CreatePage("Profile")
+local logPage = CreatePage("Log")
+local configPage = CreatePage("Config")
+
+local tabCreate = CreateTab("Create", "✦", 1)
+CreateTab("Manage", "⚙", 2)
+CreateTab("Saves", "💾", 3)
+CreateTab("Macro", "▶", 4)
+CreateTab("Groups", "📁", 5)
+CreateTab("Vars", "📊", 6)
+CreateTab("Snippet", "✂", 7)
+CreateTab("Profile", "👤", 8)
+CreateTab("Log", "📋", 9)
+CreateTab("Config", "⚡", 10)
+
+AL(createPage, "Tool Name:", 1)
+local nameIn = AI(createPage, "Name...", 2)
+AL(createPage, "Description:", 3)
+local descIn = AI(createPage, "Optional...", 4)
+AL(createPage, "Cooldown (sec):", 5)
+local cdIn = AI(createPage, "0", 6)
+AL(createPage, "Condition:", 7)
+local condIn = AI(createPage, "true (or leave empty)", 8)
+AL(createPage, "Chain Tools (comma sep):", 9)
+local chainIn = AI(createPage, "ToolA,ToolB...", 10)
+AL(createPage, "Event (loop:N / heartbeat / damage):", 11)
+local eventIn = AI(createPage, "Optional...", 12)
+AL(createPage, "Script:", 13)
+local codeIn = AI(createPage, "print('Hello!')", 14, true)
+AS(createPage, 15)
+
+AB(createPage, "✦ Create", 16, function()
+	local n = nameIn.Text
+	if n == "" then Notify("Enter name!", Color3.fromRGB(200, 60, 60)) return end
+	table.insert(UndoHistory, {a = "create", d = ActiveTools[n] and {name = ActiveTools[n].name, cooldown = ActiveTools[n].cooldown, code = ActiveTools[n].code, desc = ActiveTools[n].desc, condition = ActiveTools[n].condition, chain = ActiveTools[n].chain, event = ActiveTools[n].event} or nil, n = n})
+	SpawnTool(n, cdIn.Text, codeIn.Text, descIn.Text, condIn.Text, chainIn.Text, eventIn.Text)
+	Notify("Created: " .. n, Color3.fromRGB(60, 180, 120))
+end)
+
+AB(createPage, "✦ Create & Clear", 17, function()
+	local n = nameIn.Text
+	if n == "" then Notify("Enter name!", Color3.fromRGB(200, 60, 60)) return end
+	table.insert(UndoHistory, {a = "create", d = nil, n = n})
+	SpawnTool(n, cdIn.Text, codeIn.Text, descIn.Text, condIn.Text, chainIn.Text, eventIn.Text)
+	Notify("Created: " .. n, Color3.fromRGB(60, 180, 120))
+	nameIn.Text = ""; cdIn.Text = ""; codeIn.Text = ""; descIn.Text = ""; condIn.Text = ""; chainIn.Text = ""; eventIn.Text = ""
+end)
+
+AB(createPage, "⚡ Test Script", 18, function()
+	if codeIn.Text == "" then Notify("No script!") return end
+	local ok, err = pcall(function()
+		local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()})
+		setfenv(loadstring(codeIn.Text), env)()
+	end)
+	Notify(ok and "Script OK!" or ("Err: " .. tostring(err):sub(1, 35)), ok and Color3.fromRGB(60, 180, 120) or Color3.fromRGB(200, 60, 60))
+end)
+
+AB(createPage, "↩ Undo", 19, function()
+	if #UndoHistory == 0 then Notify("Nothing!") return end
+	local last = table.remove(UndoHistory)
+	if last.a == "create" then
+		if last.d then SpawnTool(last.d.name, last.d.cooldown, last.d.code, last.d.desc, last.d.condition, last.d.chain, last.d.event) else DestroyTool(last.n) end
+	elseif last.a == "delete" and last.d then
+		SpawnTool(last.d.name, last.d.cooldown, last.d.code, last.d.desc, last.d.condition, last.d.chain, last.d.event)
+	end
+	Notify("Undone!", Color3.fromRGB(200, 180, 80))
+end)
+
+AS(createPage, 20)
+AL(createPage, "⚡ Templates:", 21)
+
+local T = {
+	{n="KillAura",cd="1",c=[[local me=game.Players.LocalPlayer;local ch=me.Character;if not ch then return end;local h=ch:FindFirstChild("HumanoidRootPart");if not h then return end;for _,v in pairs(game.Players:GetPlayers())do if v~=me and v.Character then local hm=v.Character:FindFirstChild("Humanoid");local t=v.Character:FindFirstChild("HumanoidRootPart");if hm and t and(t.Position-h.Position).Magnitude<15 then hm.Health=0 end end end]]},
+	{n="Speed100",cd="3",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid");if h then h.WalkSpeed=100 end]]},
+	{n="Jump150",cd="2",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid");if h then h.JumpPower=150 end]]},
+	{n="TpFwd50",cd="1",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart");if h then h.CFrame=h.CFrame*CFrame.new(0,0,-50)end]]},
+	{n="GodMode",cd="5",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid");if h then h.MaxHealth=math.huge;h.Health=math.huge end]]},
+	{n="Noclip",cd="1",c=[[if getgenv().noclipC then getgenv().noclipC:Disconnect();getgenv().noclipC=nil;return end;getgenv().noclipC=game:GetService("RunService").Stepped:Connect(function()local c=game.Players.LocalPlayer.Character;if c then for _,v in pairs(c:GetDescendants())do if v:IsA("BasePart")then v.CanCollide=false end end end end)]]},
+	{n="Fly",cd="2",c=[[local c=game.Players.LocalPlayer.Character;if not c then return end;local h=c:FindFirstChild("HumanoidRootPart");if not h then return end;if getgenv().flyBV then getgenv().flyBV:Destroy();getgenv().flyBV=nil;return end;local bv=Instance.new("BodyVelocity",h);bv.MaxForce=Vector3.new(1e5,1e5,1e5);bv.Velocity=Vector3.new(0,50,0);getgenv().flyBV=bv]]},
+	{n="Heal",cd="3",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid");if h then h.Health=h.MaxHealth end]]},
+	{n="Invis",cd="5",c=[[local c=game.Players.LocalPlayer.Character;if c then for _,v in pairs(c:GetDescendants())do if v:IsA("BasePart")or v:IsA("Decal")then v.Transparency=1 end end end]]},
+	{n="Visible",cd="1",c=[[local c=game.Players.LocalPlayer.Character;if c then for _,v in pairs(c:GetDescendants())do if v:IsA("BasePart")then v.Transparency=0 end;if v:IsA("Decal")then v.Transparency=0 end end end]]},
+	{n="TpMouse",cd="1",c=[[local m=game.Players.LocalPlayer:GetMouse();local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart");if h and m.Hit then h.CFrame=m.Hit+Vector3.new(0,3,0)end]]},
+	{n="Explode",cd="5",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart");if h then local e=Instance.new("Explosion",workspace);e.Position=h.Position;e.BlastRadius=20;e.BlastPressure=0 end]]},
+	{n="Freeze",cd="3",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart");if h then h.Anchored=not h.Anchored end]]},
+	{n="Gravity",cd="2",c=[[if workspace.Gravity==196.2 then workspace.Gravity=50 else workspace.Gravity=196.2 end]]},
+	{n="Reset",cd="0",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("Humanoid");if h then h.WalkSpeed=16;h.JumpPower=50 end]]},
+	{n="Fling",cd="3",c=[[local c=game.Players.LocalPlayer.Character;if c then local h=c:FindFirstChild("HumanoidRootPart");if h then h.Velocity=Vector3.new(math.random(-200,200),200,math.random(-200,200))end end]]},
+	{n="Spin",cd="2",c=[[local h=game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart");if not h then return end;if getgenv().spinAV then getgenv().spinAV:Destroy();getgenv().spinAV=nil;return end;local av=Instance.new("BodyAngularVelocity",h);av.AngularVelocity=Vector3.new(0,30,0);av.MaxTorque=Vector3.new(0,1e5,0);getgenv().spinAV=av]]},
+	{n="BigHead",cd="1",c=[[for _,v in pairs(game.Players:GetPlayers())do if v.Character and v.Character:FindFirstChild("Head")then v.Character.Head.Size=Vector3.new(5,5,5)end end]]},
 }
 
-local themeNames = {}
-for k in pairs(themes) do table.insert(themeNames, k) end
-table.sort(themeNames)
-
-local function T() return themes[getgenv().ToolCreatorSettings.theme] or themes.galaxy end
-
-local function parseColor(str)
-    local r,g,b = str:match("(%d+)%s*,%s*(%d+)%s*,%s*(%d+)")
-    if r and g and b then return Color3.fromRGB(tonumber(r),tonumber(g),tonumber(b)) end
-    return Color3.fromRGB(128,0,255)
+for i, t in ipairs(T) do
+	AB(createPage, "📋 " .. t.n, 21 + i, function()
+		nameIn.Text = t.n; cdIn.Text = t.cd; codeIn.Text = t.c; descIn.Text = t.n; condIn.Text = ""; chainIn.Text = ""; eventIn.Text = ""
+		Notify("Template: " .. t.n)
+	end)
 end
 
-local function makeDraggable(gui, handle)
-    handle = handle or gui
-    local dragging, dragStart, startPos
-    handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = gui.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
-        end
-    end)
-    UIS.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
-            local d = input.Position - dragStart
-            gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-        end
-    end)
-end
+AL(managePage, "Tool Name:", 1)
+local delIn = AI(managePage, "Name...", 2)
 
-local function ripple(btn)
-    local c = Instance.new("Frame")
-    c.Size = UDim2.new(0,0,0,0)
-    c.Position = UDim2.new(0.5,0,0.5,0)
-    c.AnchorPoint = Vector2.new(0.5,0.5)
-    c.BackgroundColor3 = Color3.fromRGB(255,255,255)
-    c.BackgroundTransparency = 0.6
-    c.BorderSizePixel = 0
-    c.ZIndex = btn.ZIndex + 1
-    c.Parent = btn
-    Instance.new("UICorner",c).CornerRadius = UDim.new(1,0)
-    TweenService:Create(c,TweenInfo.new(0.3),{Size=UDim2.new(2.5,0,2.5,0),BackgroundTransparency=1}):Play()
-    delay(0.3, function() if c then c:Destroy() end end)
-end
-
-local function playSound(vol)
-    if not getgenv().ToolCreatorSettings.soundFX then return end
-    pcall(function()
-        local s = Instance.new("Sound",sg)
-        s.SoundId = "rbxassetid://6895079853"
-        s.Volume = vol or 0.3
-        s:Play()
-        s.Ended:Connect(function() s:Destroy() end)
-    end)
-end
-
-local notifContainer = Instance.new("Frame")
-notifContainer.Size = UDim2.new(0,230,1,0)
-notifContainer.Position = UDim2.new(1,-235,0,0)
-notifContainer.BackgroundTransparency = 1
-notifContainer.ZIndex = 200
-notifContainer.Parent = sg
-local notifLayout = Instance.new("UIListLayout",notifContainer)
-notifLayout.Padding = UDim.new(0,4)
-notifLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-notifLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-Instance.new("UIPadding",notifContainer).PaddingTop = UDim.new(0,8)
-
-local function notify(title, msg, dur, icon)
-    dur = dur or 3
-    icon = icon or "✦"
-    local nf = Instance.new("Frame")
-    nf.Size = UDim2.new(1,0,0,0)
-    nf.BackgroundColor3 = T().bar
-    nf.BorderSizePixel = 0
-    nf.ZIndex = 201
-    nf.ClipsDescendants = true
-    nf.Parent = notifContainer
-    Instance.new("UICorner",nf).CornerRadius = UDim.new(0,8)
-    Instance.new("UIStroke",nf).Color = T().accent
-    local nt = Instance.new("TextLabel")
-    nt.Size = UDim2.new(1,-10,0,16)
-    nt.Position = UDim2.new(0,8,0,4)
-    nt.BackgroundTransparency = 1
-    nt.Text = icon.." "..title
-    nt.TextColor3 = T().accent
-    nt.TextSize = 9
-    nt.Font = Enum.Font.GothamBold
-    nt.TextXAlignment = Enum.TextXAlignment.Left
-    nt.ZIndex = 202
-    nt.Parent = nf
-    local nm = Instance.new("TextLabel")
-    nm.Size = UDim2.new(1,-10,0,22)
-    nm.Position = UDim2.new(0,8,0,20)
-    nm.BackgroundTransparency = 1
-    nm.Text = msg
-    nm.TextColor3 = T().text
-    nm.TextSize = 8
-    nm.Font = Enum.Font.Gotham
-    nm.TextXAlignment = Enum.TextXAlignment.Left
-    nm.TextWrapped = true
-    nm.ZIndex = 202
-    nm.Parent = nf
-    local prog = Instance.new("Frame")
-    prog.Size = UDim2.new(1,0,0,2)
-    prog.Position = UDim2.new(0,0,1,-2)
-    prog.BackgroundColor3 = T().accent
-    prog.BorderSizePixel = 0
-    prog.ZIndex = 202
-    prog.Parent = nf
-    TweenService:Create(nf,TweenInfo.new(0.25,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=UDim2.new(1,0,0,48)}):Play()
-    TweenService:Create(prog,TweenInfo.new(dur,Enum.EasingStyle.Linear),{Size=UDim2.new(0,0,0,2)}):Play()
-    delay(dur, function()
-        TweenService:Create(nf,TweenInfo.new(0.2),{Size=UDim2.new(1,0,0,0)}):Play()
-        delay(0.2, function() if nf then nf:Destroy() end end)
-    end)
-end
-
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0,44,0,44)
-toggleBtn.Position = UDim2.new(0,6,0.5,-22)
-toggleBtn.BackgroundColor3 = T().bg
-toggleBtn.Text = "⚒"
-toggleBtn.TextColor3 = T().accent
-toggleBtn.TextSize = 20
-toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.ZIndex = 100
-toggleBtn.AutoButtonColor = false
-toggleBtn.ClipsDescendants = true
-toggleBtn.Parent = sg
-Instance.new("UICorner",toggleBtn).CornerRadius = UDim.new(1,0)
-local toggleStroke = Instance.new("UIStroke",toggleBtn)
-toggleStroke.Color = T().accent
-toggleStroke.Thickness = 2
-makeDraggable(toggleBtn)
-
-local badge = Instance.new("TextLabel")
-badge.Size = UDim2.new(0,15,0,15)
-badge.Position = UDim2.new(1,-15,0,-2)
-badge.BackgroundColor3 = Color3.fromRGB(255,45,45)
-badge.Text = "0"
-badge.TextColor3 = Color3.new(1,1,1)
-badge.TextSize = 7
-badge.Font = Enum.Font.GothamBold
-badge.ZIndex = 101
-badge.Visible = false
-badge.Parent = toggleBtn
-Instance.new("UICorner",badge).CornerRadius = UDim.new(1,0)
-
-local errCount = 0
-
-local mainFrame = Instance.new("Frame")
-mainFrame.Name = "Main"
-mainFrame.Size = UDim2.new(0,305,0,430)
-mainFrame.Position = UDim2.new(0.5,-153,0.5,-215)
-mainFrame.BackgroundColor3 = T().bg
-mainFrame.BorderSizePixel = 0
-mainFrame.Visible = false
-mainFrame.ClipsDescendants = true
-mainFrame.ZIndex = 50
-mainFrame.Parent = sg
-Instance.new("UICorner",mainFrame).CornerRadius = UDim.new(0,12)
-local mainStroke = Instance.new("UIStroke",mainFrame)
-mainStroke.Color = T().accent
-mainStroke.Thickness = 1.5
-
-local starsFolder = Instance.new("Folder",mainFrame)
-starsFolder.Name = "Stars"
-
-local function createStars()
-    starsFolder:ClearAllChildren()
-    if not getgenv().ToolCreatorSettings.animStars then return end
-    local t = T()
-    for i=1,55 do
-        local s = Instance.new("Frame")
-        s.Size = UDim2.new(0,math.random(1,3),0,math.random(1,3))
-        s.Position = UDim2.new(math.random()/1,0,math.random()/1,0)
-        s.BackgroundColor3 = i%3==0 and t.accent or (i%2==0 and t.star1 or t.star2)
-        s.BackgroundTransparency = math.random()*0.4
-        s.BorderSizePixel = 0
-        s.ZIndex = 50
-        s.Parent = starsFolder
-        Instance.new("UICorner",s).CornerRadius = UDim.new(1,0)
-        spawn(function()
-            local sp = math.random()*2+1.2
-            while s.Parent do
-                TweenService:Create(s,TweenInfo.new(sp,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{BackgroundTransparency=0.9}):Play()
-                wait(sp)
-                TweenService:Create(s,TweenInfo.new(sp,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{BackgroundTransparency=0.05}):Play()
-                wait(sp)
-            end
-        end)
-    end
-    for i=1,4 do
-        local nb = Instance.new("Frame")
-        nb.Size = UDim2.new(math.random()*0.22+0.12,0,math.random()*0.14+0.08,0)
-        nb.Position = UDim2.new(math.random()*0.7+0.1,0,math.random()*0.7+0.1,0)
-        nb.BackgroundColor3 = t.accent
-        nb.BackgroundTransparency = 0.88
-        nb.BorderSizePixel = 0
-        nb.ZIndex = 50
-        nb.Parent = starsFolder
-        Instance.new("UICorner",nb).CornerRadius = UDim.new(1,0)
-        spawn(function()
-            while nb.Parent do
-                TweenService:Create(nb,TweenInfo.new(7,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{BackgroundTransparency=0.95,Rotation=math.random(-20,20)}):Play()
-                wait(7)
-                TweenService:Create(nb,TweenInfo.new(7,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{BackgroundTransparency=0.82,Rotation=math.random(-20,20)}):Play()
-                wait(7)
-            end
-        end)
-    end
-end
-createStars()
-
-local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1,0,0,32)
-titleBar.BackgroundColor3 = T().bar
-titleBar.BorderSizePixel = 0
-titleBar.ZIndex = 51
-titleBar.Parent = mainFrame
-Instance.new("UICorner",titleBar).CornerRadius = UDim.new(0,12)
-makeDraggable(mainFrame, titleBar)
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1,-80,1,0)
-titleLabel.Position = UDim2.new(0,10,0,0)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "✦ Tools Creator v1.0"
-titleLabel.TextColor3 = T().text
-titleLabel.TextSize = 11
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-titleLabel.ZIndex = 52
-titleLabel.Parent = titleBar
-
-local fpsLabel = Instance.new("TextLabel")
-fpsLabel.Size = UDim2.new(0,40,0,12)
-fpsLabel.Position = UDim2.new(1,-120,0,10)
-fpsLabel.BackgroundTransparency = 1
-fpsLabel.Text = "0 FPS"
-fpsLabel.TextColor3 = T().dim
-fpsLabel.TextSize = 7
-fpsLabel.Font = Enum.Font.Code
-fpsLabel.ZIndex = 52
-fpsLabel.Parent = titleBar
-
-spawn(function()
-    while sg.Parent do
-        local f = math.floor(1/RunService.RenderStepped:Wait())
-        fpsLabel.Text = f.." FPS"
-        fpsLabel.TextColor3 = f >= 30 and T().success or (f >= 15 and T().warn or T().err)
-    end
+AB(managePage, "🗑 Delete", 3, function()
+	local n = delIn.Text
+	if not ActiveTools[n] then Notify("Not found!") return end
+	table.insert(UndoHistory, {a = "delete", d = {name = ActiveTools[n].name, cooldown = ActiveTools[n].cooldown, code = ActiveTools[n].code, desc = ActiveTools[n].desc, condition = ActiveTools[n].condition or "", chain = ActiveTools[n].chain or "", event = ActiveTools[n].event or ""}, n = n})
+	DestroyTool(n)
+	Notify("Deleted: " .. n, Color3.fromRGB(200, 120, 60))
 end)
 
-local minBtn = Instance.new("TextButton")
-minBtn.Size = UDim2.new(0,22,0,22)
-minBtn.Position = UDim2.new(1,-56,0,5)
-minBtn.BackgroundColor3 = Color3.fromRGB(55,45,28)
-minBtn.Text = "—"
-minBtn.TextColor3 = Color3.fromRGB(255,215,140)
-minBtn.TextSize = 12
-minBtn.Font = Enum.Font.GothamBold
-minBtn.ZIndex = 52
-minBtn.AutoButtonColor = false
-minBtn.ClipsDescendants = true
-minBtn.Parent = titleBar
-Instance.new("UICorner",minBtn).CornerRadius = UDim.new(0,6)
+AB(managePage, "⭐ Favorite", 4, function()
+	local n = delIn.Text; if n == "" then return end
+	Favorites[n] = not Favorites[n] or nil
+	Notify(Favorites[n] and ("⭐ " .. n) or ("Unfav: " .. n))
+end)
 
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0,22,0,22)
-closeBtn.Position = UDim2.new(1,-30,0,5)
-closeBtn.BackgroundColor3 = Color3.fromRGB(95,18,25)
-closeBtn.Text = "✕"
-closeBtn.TextColor3 = Color3.fromRGB(255,195,195)
-closeBtn.TextSize = 10
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.ZIndex = 52
-closeBtn.AutoButtonColor = false
-closeBtn.ClipsDescendants = true
-closeBtn.Parent = titleBar
-Instance.new("UICorner",closeBtn).CornerRadius = UDim.new(0,6)
+AB(managePage, "📊 Stats", 5, function()
+	local n = delIn.Text
+	if not ToolStats[n] then Notify("Not found!") return end
+	local s = ToolStats[n]
+	local avg = s.uses > 0 and string.format("%.3f", s.totalTime / s.uses) or "N/A"
+	Notify(n .. ": " .. s.uses .. "x err:" .. s.errors .. " avg:" .. avg .. "s best:" .. s.bestStreak, Color3.fromRGB(100, 180, 255))
+end)
 
-local tabBar = Instance.new("ScrollingFrame")
-tabBar.Size = UDim2.new(1,-6,0,22)
-tabBar.Position = UDim2.new(0,3,0,36)
-tabBar.BackgroundTransparency = 1
-tabBar.ScrollBarThickness = 0
-tabBar.CanvasSize = UDim2.new(0,0,0,0)
-tabBar.ScrollingDirection = Enum.ScrollingDirection.X
-tabBar.ZIndex = 53
-tabBar.BorderSizePixel = 0
-tabBar.Parent = mainFrame
-local tabLayout = Instance.new("UIListLayout",tabBar)
-tabLayout.FillDirection = Enum.FillDirection.Horizontal
-tabLayout.Padding = UDim.new(0,2)
+AB(managePage, "✏ Edit", 6, function()
+	local n = delIn.Text; if not ActiveTools[n] then Notify("Not found!") return end
+	local a = ActiveTools[n]
+	nameIn.Text = a.name; cdIn.Text = a.cooldown; codeIn.Text = a.code; descIn.Text = a.desc; condIn.Text = a.condition or ""; chainIn.Text = a.chain or ""; eventIn.Text = a.event or ""
+	SwitchTab("Create"); Notify("Editing: " .. n)
+end)
 
-local currentTab = "create"
-local tabButtons = {}
-local tabPages = {}
+AB(managePage, "📋 Duplicate", 7, function()
+	local n = delIn.Text; if not ActiveTools[n] then Notify("Not found!") return end
+	local nn = n .. "_copy"; local c = 1; while ActiveTools[nn] do c = c + 1; nn = n .. "_copy" .. c end
+	local a = ActiveTools[n]
+	SpawnTool(nn, a.cooldown, a.code, a.desc, a.condition, a.chain, a.event)
+	Notify("Duped: " .. nn, Color3.fromRGB(100, 200, 150))
+end)
 
-local tabDefs = {
-    {id="create",text="Create",icon="⚒"},
-    {id="manage",text="Manage",icon="📁"},
-    {id="templates",text="Templates",icon="📦"},
-    {id="snippets",text="Snippets",icon="✂"},
-    {id="console",text="Console",icon="📟"},
-    {id="settings",text="Settings",icon="⚙"}
+AB(managePage, "🔄 Rename", 8, function()
+	local old = delIn.Text; if not ActiveTools[old] then Notify("Not found!") return end
+	local nn = nameIn.Text; if nn == "" then Notify("Set new name in Create!") return end
+	local a = ActiveTools[old]; DestroyTool(old)
+	SpawnTool(nn, a.cooldown, a.code, a.desc, a.condition, a.chain, a.event)
+	Notify(old .. " → " .. nn, Color3.fromRGB(100, 200, 180))
+end)
+
+AS(managePage, 9)
+
+AB(managePage, "🗑 Delete ALL", 10, function()
+	local c = 0
+	for n, v in pairs(ActiveTools) do
+		table.insert(UndoHistory, {a = "delete", d = {name = v.name, cooldown = v.cooldown, code = v.code, desc = v.desc, condition = v.condition or "", chain = v.chain or "", event = v.event or ""}, n = n})
+		c = c + 1
+	end
+	local ns = {}; for n in pairs(ActiveTools) do ns[n] = true end
+	for n in pairs(ns) do DestroyTool(n) end
+	ActiveTools = {}
+	Notify("Deleted " .. c, Color3.fromRGB(200, 120, 60))
+end)
+
+AB(managePage, "🔄 Re-equip All", 11, function()
+	local d = {}; for _, v in pairs(ActiveTools) do table.insert(d, {name = v.name, cooldown = v.cooldown, code = v.code, desc = v.desc, condition = v.condition, chain = v.chain, event = v.event}) end
+	for _, x in pairs(d) do SpawnTool(x.name, x.cooldown, x.code, x.desc, x.condition, x.chain, x.event) end
+	Notify("Re-equipped " .. #d, Color3.fromRGB(100, 180, 255))
+end)
+
+AB(managePage, "⏹ Stop All Events", 12, function()
+	local c = 0
+	for tn, evts in pairs(ToolEvents) do
+		for _, conn in pairs(evts) do pcall(function() conn:Disconnect() end) end
+		c = c + 1
+	end
+	ToolEvents = {}
+	for tn in pairs(ToolSchedules) do ToolSchedules[tn] = nil end
+	Notify("Stopped " .. c .. " events", Color3.fromRGB(200, 120, 60))
+end)
+
+AS(managePage, 13)
+AL(managePage, "Keybind:", 14)
+local kbIn = AI(managePage, "Key (E,F,G...)", 15)
+
+AB(managePage, "🎮 Set Keybind", 16, function()
+	local n = delIn.Text; local k = kbIn.Text:upper()
+	if n == "" or k == "" then Notify("Fill!") return end
+	Keybinds[k] = n; Notify(k .. " → " .. n, Color3.fromRGB(180, 140, 255))
+end)
+
+AB(managePage, "🎮 Remove Keybind", 17, function()
+	local k = kbIn.Text:upper()
+	if Keybinds[k] then Keybinds[k] = nil; Notify("Removed: " .. k) else Notify("No bind!") end
+end)
+
+AS(managePage, 18)
+AL(managePage, "Active Tools:", 19)
+local activeLabel = AIB(managePage, 20, 75)
+AL(managePage, "Keybinds:", 21)
+local kbLabel = AIB(managePage, 22, 40)
+
+AL(savePage, "Save Slot:", 1)
+local saveIn = AI(savePage, "Slot name...", 2)
+AS(savePage, 3)
+
+AB(savePage, "💾 Save All", 4, function()
+	local sn = saveIn.Text; if sn == "" then Notify("Enter name!") return end
+	local d = {}; for _, v in pairs(ActiveTools) do table.insert(d, {name = v.name, cooldown = v.cooldown, code = v.code, desc = v.desc, condition = v.condition, chain = v.chain, event = v.event}) end
+	if #d == 0 then Notify("No tools!") return end
+	SavedTools[sn] = d; Notify("Saved " .. #d .. " → " .. sn, Color3.fromRGB(60, 180, 120))
+end)
+
+AB(savePage, "📂 Load", 5, function()
+	local sn = saveIn.Text; if not SavedTools[sn] then Notify("Not found!") return end
+	for _, d in pairs(SavedTools[sn]) do SpawnTool(d.name, d.cooldown, d.code, d.desc, d.condition, d.chain, d.event) end
+	Notify("Loaded " .. #SavedTools[sn] .. " ← " .. sn, Color3.fromRGB(100, 180, 255))
+end)
+
+AB(savePage, "📂 Merge", 6, function()
+	local sn = saveIn.Text; if not SavedTools[sn] then Notify("Not found!") return end
+	local c = 0; for _, d in pairs(SavedTools[sn]) do if not ActiveTools[d.name] then SpawnTool(d.name, d.cooldown, d.code, d.desc, d.condition, d.chain, d.event); c = c + 1 end end
+	Notify("Merged " .. c, Color3.fromRGB(100, 200, 180))
+end)
+
+AB(savePage, "🗑 Delete Save", 7, function()
+	local sn = saveIn.Text; if not SavedTools[sn] then Notify("Not found!") return end
+	SavedTools[sn] = nil; Notify("Deleted: " .. sn, Color3.fromRGB(200, 120, 60))
+end)
+
+AB(savePage, "🗑 Delete ALL Saves", 8, function()
+	local c = 0; for _ in pairs(SavedTools) do c = c + 1 end
+	SavedTools = {}; getgenv().TC_Saves = SavedTools
+	Notify("Deleted " .. c .. " saves!", Color3.fromRGB(200, 120, 60))
+end)
+
+AS(savePage, 9)
+AL(savePage, "Rename:", 10)
+local renIn = AI(savePage, "New name...", 11)
+
+AB(savePage, "✏ Rename", 12, function()
+	local o = saveIn.Text; local n = renIn.Text
+	if o == "" or n == "" or not SavedTools[o] then Notify("Check!") return end
+	SavedTools[n] = SavedTools[o]; SavedTools[o] = nil; Notify(o .. " → " .. n, Color3.fromRGB(100, 200, 180))
+end)
+
+AS(savePage, 13)
+AL(savePage, "Export/Import (JSON):", 14)
+local expIn = AI(savePage, "Tool name...", 15)
+local expOut = AI(savePage, "Data...", 16, true)
+
+AB(savePage, "📤 Export", 17, function()
+	local n = expIn.Text; if not ActiveTools[n] then Notify("Not found!") return end
+	local t = ActiveTools[n]
+	expOut.Text = HttpService:JSONEncode({v = "1.0", n = t.name, cd = t.cooldown, d = t.desc, co = t.condition, ch = t.chain, ev = t.event, c = t.code})
+	Notify("Exported!", Color3.fromRGB(100, 180, 255))
+end)
+
+AB(savePage, "📥 Import", 18, function()
+	local raw = expOut.Text; if raw == "" then Notify("Paste!") return end
+	local ok, d = pcall(function() return HttpService:JSONDecode(raw) end)
+	if ok and d and d.n then SpawnTool(d.n, d.cd or "0", d.c or "", d.d or "", d.co or "", d.ch or "", d.ev or ""); Notify("Imported: " .. d.n, Color3.fromRGB(60, 180, 120))
+	else Notify("Invalid!", Color3.fromRGB(200, 60, 60)) end
+end)
+
+AB(savePage, "📤 Export ALL", 19, function()
+	local all = {}; for _, v in pairs(ActiveTools) do table.insert(all, {v = "1.0", n = v.name, cd = v.cooldown, d = v.desc, co = v.condition, ch = v.chain, ev = v.event, c = v.code}) end
+	if #all == 0 then Notify("No tools!") return end
+	expOut.Text = HttpService:JSONEncode(all); Notify("Exported " .. #all, Color3.fromRGB(100, 180, 255))
+end)
+
+AB(savePage, "📥 Import ALL", 20, function()
+	local raw = expOut.Text; if raw == "" then Notify("Paste!") return end
+	local ok, d = pcall(function() return HttpService:JSONDecode(raw) end)
+	if ok and type(d) == "table" then
+		local c = 0
+		if d.n then SpawnTool(d.n, d.cd or "0", d.c or "", d.d or "", d.co or "", d.ch or "", d.ev or ""); c = 1
+		else for _, x in pairs(d) do if x.n then SpawnTool(x.n, x.cd or "0", x.c or "", x.d or "", x.co or "", x.ch or "", x.ev or ""); c = c + 1 end end end
+		Notify("Imported " .. c, Color3.fromRGB(60, 180, 120))
+	else Notify("Invalid!", Color3.fromRGB(200, 60, 60)) end
+end)
+
+AS(savePage, 21)
+AL(savePage, "Saved Slots:", 22)
+local savesLabel = AIB(savePage, 23, 65)
+
+AL(macroPage, "Macro Name:", 1)
+local mcNameIn = AI(macroPage, "Name...", 2)
+AL(macroPage, "Sequence (comma sep):", 3)
+local mcSeqIn = AI(macroPage, "Tool1,Tool2...", 4)
+AL(macroPage, "Delay (sec):", 5)
+local mcDelIn = AI(macroPage, "0.5", 6)
+AL(macroPage, "Repeat Count (0=inf):", 7)
+local mcRepIn = AI(macroPage, "1", 8)
+AS(macroPage, 9)
+
+AB(macroPage, "▶ Create Macro", 10, function()
+	local mn = mcNameIn.Text; local seq = mcSeqIn.Text; if mn == "" or seq == "" then Notify("Fill!") return end
+	local tools = {}; for t in seq:gmatch("[^,]+") do table.insert(tools, t:match("^%s*(.-)%s*$")) end
+	Macros[mn] = {tools = tools, delay = tonumber(mcDelIn.Text) or 0.5, repeats = tonumber(mcRepIn.Text) or 1}
+	Notify("Macro: " .. mn .. " (" .. #tools .. ")", Color3.fromRGB(60, 180, 120))
+end)
+
+AB(macroPage, "▶ Run", 11, function()
+	local mn = mcNameIn.Text; if not Macros[mn] then Notify("Not found!") return end
+	local m = Macros[mn]; local reps = m.repeats or 1
+	Notify("Running: " .. mn, Color3.fromRGB(255, 200, 60))
+	task.spawn(function()
+		local count = 0
+		while (reps == 0 or count < reps) and getgenv().ToolsCreator do
+			for i, tn in ipairs(m.tools) do
+				if ActiveTools[tn] then
+					pcall(function()
+						local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()})
+						setfenv(loadstring(ActiveTools[tn].code), env)()
+					end)
+					AddLog("Macro: " .. tn .. " (" .. i .. "/" .. #m.tools .. ")")
+				end
+				if i < #m.tools then task.wait(m.delay) end
+			end
+			count = count + 1
+			if reps == 0 and not getgenv()["macro_loop_" .. mn] then break end
+			if count < reps or reps == 0 then task.wait(m.delay) end
+		end
+		Notify("Macro done: " .. mn, Color3.fromRGB(60, 180, 120))
+	end)
+end)
+
+AB(macroPage, "🔁 Loop", 12, function()
+	local mn = mcNameIn.Text; if not Macros[mn] then Notify("Not found!") return end
+	if getgenv()["macro_loop_" .. mn] then getgenv()["macro_loop_" .. mn] = false; Notify("Stopped: " .. mn); return end
+	getgenv()["macro_loop_" .. mn] = true
+	Notify("Looping: " .. mn, Color3.fromRGB(255, 200, 60))
+	task.spawn(function()
+		while getgenv()["macro_loop_" .. mn] and Macros[mn] do
+			for i, tn in ipairs(Macros[mn].tools) do
+				if not getgenv()["macro_loop_" .. mn] then break end
+				if ActiveTools[tn] then pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); setfenv(loadstring(ActiveTools[tn].code), env)() end) end
+				if i < #Macros[mn].tools then task.wait(Macros[mn].delay) end
+			end
+			task.wait(Macros[mn].delay)
+		end
+	end)
+end)
+
+AB(macroPage, "🗑 Delete Macro", 13, function()
+	local mn = mcNameIn.Text; if not Macros[mn] then Notify("Not found!") return end
+	getgenv()["macro_loop_" .. mn] = false; Macros[mn] = nil; Notify("Deleted: " .. mn, Color3.fromRGB(200, 120, 60))
+end)
+
+AS(macroPage, 14)
+AL(macroPage, "Macros:", 15)
+local macroLabel = AIB(macroPage, 16, 60)
+AL(macroPage, "Combo History:", 17)
+local comboLabel = AIB(macroPage, 18, 50)
+
+AL(groupPage, "Group Name:", 1)
+local grpIn = AI(groupPage, "Group...", 2)
+AL(groupPage, "Tools (comma sep):", 3)
+local grpTIn = AI(groupPage, "Tool1,Tool2...", 4)
+AS(groupPage, 5)
+
+AB(groupPage, "📁 Create", 6, function()
+	local gn = grpIn.Text; local gt = grpTIn.Text; if gn == "" or gt == "" then Notify("Fill!") return end
+	local tools = {}; for t in gt:gmatch("[^,]+") do table.insert(tools, t:match("^%s*(.-)%s*$")) end
+	ToolGroups[gn] = tools; Notify("Group: " .. gn .. " (" .. #tools .. ")", Color3.fromRGB(60, 180, 120))
+end)
+
+AB(groupPage, "▶ Equip Group", 7, function()
+	local gn = grpIn.Text; if not ToolGroups[gn] then Notify("Not found!") return end
+	local char = Player.Character; if not char then return end
+	local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end
+	for _, tn in ipairs(ToolGroups[gn]) do
+		local tool = Player:FindFirstChild("Backpack") and Player.Backpack:FindFirstChild(tn)
+		if not tool then tool = char:FindFirstChild(tn) end
+		if tool and tool:IsA("Tool") then hum:EquipTool(tool) end
+	end
+	Notify("Equipped: " .. gn, Color3.fromRGB(100, 180, 255))
+end)
+
+AB(groupPage, "▶ Run Group Scripts", 8, function()
+	local gn = grpIn.Text; if not ToolGroups[gn] then Notify("Not found!") return end
+	local c = 0
+	for _, tn in ipairs(ToolGroups[gn]) do
+		if ActiveTools[tn] then
+			pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); setfenv(loadstring(ActiveTools[tn].code), env)() end)
+			c = c + 1
+		end
+	end
+	Notify("Ran " .. c .. " scripts", Color3.fromRGB(100, 180, 255))
+end)
+
+AB(groupPage, "🗑 Delete Group", 9, function()
+	local gn = grpIn.Text; if not ToolGroups[gn] then Notify("Not found!") return end
+	ToolGroups[gn] = nil; Notify("Deleted: " .. gn, Color3.fromRGB(200, 120, 60))
+end)
+
+AB(groupPage, "🗑 Delete Group+Tools", 10, function()
+	local gn = grpIn.Text; if not ToolGroups[gn] then Notify("Not found!") return end
+	for _, tn in ipairs(ToolGroups[gn]) do if ActiveTools[tn] then DestroyTool(tn) end end
+	ToolGroups[gn] = nil; Notify("Deleted all: " .. gn, Color3.fromRGB(200, 120, 60))
+end)
+
+AS(groupPage, 11)
+AL(groupPage, "Groups:", 12)
+local grpLabel = AIB(groupPage, 13, 65)
+
+AL(varPage, "Variable Name:", 1)
+local varNameIn = AI(varPage, "var_name", 2)
+AL(varPage, "Value:", 3)
+local varValIn = AI(varPage, "value", 4)
+AS(varPage, 5)
+
+AB(varPage, "📊 Set Variable", 6, function()
+	local vn = varNameIn.Text; local vv = varValIn.Text
+	if vn == "" then Notify("Enter name!") return end
+	local num = tonumber(vv)
+	if num then ToolVars[vn] = num
+	elseif vv == "true" then ToolVars[vn] = true
+	elseif vv == "false" then ToolVars[vn] = false
+	elseif vv == "nil" then ToolVars[vn] = nil
+	else ToolVars[vn] = vv end
+	Notify("Set: " .. vn .. " = " .. tostring(ToolVars[vn]), Color3.fromRGB(60, 180, 120))
+end)
+
+AB(varPage, "🗑 Delete Variable", 7, function()
+	local vn = varNameIn.Text; if vn == "" then return end
+	ToolVars[vn] = nil; Notify("Deleted: " .. vn, Color3.fromRGB(200, 120, 60))
+end)
+
+AB(varPage, "🗑 Clear All Vars", 8, function()
+	ToolVars = {}; getgenv().TC_Vars = ToolVars; Notify("Cleared!", Color3.fromRGB(200, 120, 60))
+end)
+
+AS(varPage, 9)
+AL(varPage, "Variables:", 10)
+local varLabel = AIB(varPage, 11, 80)
+AS(varPage, 12)
+AL(varPage, "Usage in scripts:", 13)
+local varHelpLabel = AIB(varPage, 14, 50)
+varHelpLabel.Text = "Access: vars.name\nSet: vars.name = value\nCondition: vars.hp > 50\nShared across all tools"
+
+AL(snippetPage, "Snippet Name:", 1)
+local snipNameIn = AI(snippetPage, "Name...", 2)
+AL(snippetPage, "Code:", 3)
+local snipCodeIn = AI(snippetPage, "Reusable code...", 4, true)
+AS(snippetPage, 5)
+
+AB(snippetPage, "✂ Save Snippet", 6, function()
+	local sn = snipNameIn.Text; local sc = snipCodeIn.Text
+	if sn == "" or sc == "" then Notify("Fill!") return end
+	Snippets[sn] = sc; Notify("Saved: " .. sn, Color3.fromRGB(60, 180, 120))
+end)
+
+AB(snippetPage, "📋 Load to Editor", 7, function()
+	local sn = snipNameIn.Text; if not Snippets[sn] then Notify("Not found!") return end
+	codeIn.Text = Snippets[sn]; SwitchTab("Create"); Notify("Loaded: " .. sn)
+end)
+
+AB(snippetPage, "📋 Append to Editor", 8, function()
+	local sn = snipNameIn.Text; if not Snippets[sn] then Notify("Not found!") return end
+	codeIn.Text = codeIn.Text .. "\n" .. Snippets[sn]; Notify("Appended: " .. sn)
+end)
+
+AB(snippetPage, "⚡ Run Snippet", 9, function()
+	local sn = snipNameIn.Text; if not Snippets[sn] then Notify("Not found!") return end
+	local ok, err = pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); setfenv(loadstring(Snippets[sn]), env)() end)
+	Notify(ok and "OK!" or ("Err: " .. tostring(err):sub(1, 30)), ok and Color3.fromRGB(60, 180, 120) or Color3.fromRGB(200, 60, 60))
+end)
+
+AB(snippetPage, "🗑 Delete Snippet", 10, function()
+	local sn = snipNameIn.Text; if not Snippets[sn] then Notify("Not found!") return end
+	Snippets[sn] = nil; Notify("Deleted: " .. sn, Color3.fromRGB(200, 120, 60))
+end)
+
+AS(snippetPage, 11)
+AL(snippetPage, "Snippets:", 12)
+local snipLabel = AIB(snippetPage, 13, 70)
+
+AL(profilePage, "Profile Name:", 1)
+local profIn = AI(profilePage, "Profile name...", 2)
+AS(profilePage, 3)
+
+AB(profilePage, "👤 Save Profile", 4, function()
+	local pn = profIn.Text; if pn == "" then Notify("Enter name!") return end
+	local tools = {}; for _, v in pairs(ActiveTools) do table.insert(tools, {name = v.name, cooldown = v.cooldown, code = v.code, desc = v.desc, condition = v.condition, chain = v.chain, event = v.event}) end
+	local kbs = {}; for k, v in pairs(Keybinds) do kbs[k] = v end
+	local mcs = {}; for k, v in pairs(Macros) do mcs[k] = v end
+	local gs = {}; for k, v in pairs(ToolGroups) do gs[k] = v end
+	local vs = {}; for k, v in pairs(ToolVars) do vs[k] = v end
+	local sn = {}; for k, v in pairs(Snippets) do sn[k] = v end
+	Profiles[pn] = {tools = tools, keybinds = kbs, macros = mcs, groups = gs, vars = vs, snippets = sn}
+	currentProfile = pn
+	Notify("Profile saved: " .. pn, Color3.fromRGB(60, 180, 120))
+end)
+
+AB(profilePage, "👤 Load Profile", 5, function()
+	local pn = profIn.Text; if not Profiles[pn] then Notify("Not found!") return end
+	local p = Profiles[pn]
+	local ns = {}; for n in pairs(ActiveTools) do ns[n] = true end
+	for n in pairs(ns) do DestroyTool(n) end
+	ActiveTools = {}
+	if p.tools then for _, d in pairs(p.tools) do SpawnTool(d.name, d.cooldown, d.code, d.desc, d.condition, d.chain, d.event) end end
+	if p.keybinds then Keybinds = p.keybinds; getgenv().TC_Keybinds = Keybinds end
+	if p.macros then Macros = p.macros; getgenv().TC_Macros = Macros end
+	if p.groups then ToolGroups = p.groups; getgenv().TC_Groups = ToolGroups end
+	if p.vars then ToolVars = p.vars; getgenv().TC_Vars = ToolVars end
+	if p.snippets then Snippets = p.snippets; getgenv().TC_Snippets = Snippets end
+	currentProfile = pn
+	Notify("Loaded: " .. pn, Color3.fromRGB(100, 180, 255))
+end)
+
+AB(profilePage, "🗑 Delete Profile", 6, function()
+	local pn = profIn.Text; if not Profiles[pn] then Notify("Not found!") return end
+	Profiles[pn] = nil; Notify("Deleted: " .. pn, Color3.fromRGB(200, 120, 60))
+end)
+
+AB(profilePage, "📤 Export Profile (JSON)", 7, function()
+	local pn = profIn.Text; if not Profiles[pn] then Notify("Not found!") return end
+	expOut.Text = HttpService:JSONEncode({profile = pn, data = Profiles[pn]})
+	SwitchTab("Saves"); Notify("Exported profile!", Color3.fromRGB(100, 180, 255))
+end)
+
+AB(profilePage, "📥 Import Profile (JSON)", 8, function()
+	SwitchTab("Saves")
+	Notify("Paste JSON in export field, then use import")
+end)
+
+AS(profilePage, 9)
+AL(profilePage, "Current: " .. currentProfile, 10)
+AL(profilePage, "Profiles:", 11)
+local profLabel = AIB(profilePage, 12, 65)
+
+AL(logPage, "Execution Log:", 1)
+local logLabel = AIB(logPage, 2, 200)
+
+AB(logPage, "🗑 Clear", 3, function() LogEntries = {}; Notify("Cleared!") end)
+
+AB(logPage, "📋 Copy Log", 4, function()
+	if setclipboard then setclipboard(table.concat(LogEntries, "\n")); Notify("Copied!") else Notify("No clipboard!") end
+end)
+
+AS(logPage, 5)
+AL(logPage, "Statistics:", 6)
+local statsLabel = AIB(logPage, 7, 100)
+
+AL(configPage, "⚙ Settings:", 1)
+AS(configPage, 2)
+ATog(configPage, "Auto Re-equip", 3, true, function(v) autoRespawnTools = v end)
+ATog(configPage, "Enable Logging", 4, true, function(v) logEnabled = v end)
+ATog(configPage, "Cooldown Bar", 5, true, function(v) cdOverlayEnabled = v; if not v then CdOverlay.Visible = false end end)
+ATog(configPage, "Particles", 6, true, function(v) particleEnabled = v end)
+ATog(configPage, "Anti-Detect Names", 7, false, function(v) antiDetect = v end)
+
+AS(configPage, 8)
+AL(configPage, "Opacity (0-100):", 9)
+local opIn = AI(configPage, "100", 10)
+AB(configPage, "Apply", 11, function()
+	local v = tonumber(opIn.Text); if not v then return end
+	GradBG.BackgroundTransparency = 1 - math.clamp(v, 0, 100) / 100
+	Notify("Opacity: " .. math.floor(v) .. "%")
+end)
+
+AL(configPage, "Scale (50-200):", 12)
+local scIn = AI(configPage, "100", 13)
+AB(configPage, "Apply", 14, function()
+	local v = tonumber(scIn.Text); if not v then return end
+	v = math.clamp(v, 50, 200) / 100
+	fullSize = UDim2.new(0, math.floor(245 * v), 0, math.floor(365 * v))
+	miniSize = UDim2.new(0, math.floor(245 * v), 0, 24)
+	MainFrame.Size = minimized and miniSize or fullSize
+	Notify("Scale: " .. math.floor(v * 100) .. "%")
+end)
+
+AS(configPage, 15)
+
+local themeColors = {
+	Galaxy = {bg = Color3.fromRGB(5, 1, 15), title = Color3.fromRGB(10, 3, 26), accent = Color3.fromRGB(120, 60, 200)},
+	Nebula = {bg = Color3.fromRGB(15, 1, 10), title = Color3.fromRGB(28, 3, 18), accent = Color3.fromRGB(200, 60, 140)},
+	Void = {bg = Color3.fromRGB(1, 1, 5), title = Color3.fromRGB(4, 4, 14), accent = Color3.fromRGB(60, 60, 200)},
+	Cosmic = {bg = Color3.fromRGB(8, 6, 1), title = Color3.fromRGB(18, 14, 4), accent = Color3.fromRGB(200, 170, 60)},
+	Blood = {bg = Color3.fromRGB(12, 1, 1), title = Color3.fromRGB(25, 3, 3), accent = Color3.fromRGB(200, 40, 40)},
+	Emerald = {bg = Color3.fromRGB(1, 10, 5), title = Color3.fromRGB(3, 22, 12), accent = Color3.fromRGB(40, 200, 100)},
+	Frost = {bg = Color3.fromRGB(2, 8, 14), title = Color3.fromRGB(5, 16, 28), accent = Color3.fromRGB(80, 180, 240)}
 }
 
-for _,def in ipairs(tabDefs) do
-    local t = Instance.new("TextButton")
-    t.Size = UDim2.new(0,52,0,20)
-    t.BackgroundColor3 = Color3.fromRGB(22,11,50)
-    t.Text = def.icon.." "..def.text
-    t.TextColor3 = Color3.fromRGB(110,95,155)
-    t.TextSize = 7
-    t.Font = Enum.Font.GothamBold
-    t.ZIndex = 54
-    t.AutoButtonColor = false
-    t.ClipsDescendants = true
-    t.Parent = tabBar
-    Instance.new("UICorner",t).CornerRadius = UDim.new(0,5)
-    tabButtons[def.id] = t
-end
-tabBar.CanvasSize = UDim2.new(0, #tabDefs * 54, 0, 0)
-
-local function makePage(id)
-    local p = Instance.new("Frame")
-    p.Size = UDim2.new(1,-6,1,-70)
-    p.Position = UDim2.new(0,3,0,62)
-    p.BackgroundTransparency = 1
-    p.ZIndex = 53
-    p.Visible = id == "create"
-    p.ClipsDescendants = true
-    p.Parent = mainFrame
-    tabPages[id] = p
-    return p
-end
-
-local createPage = makePage("create")
-local managePage = makePage("manage")
-local templatesPage = makePage("templates")
-local snippetsPage = makePage("snippets")
-local consolePage = makePage("console")
-local settingsPage = makePage("settings")
-
-local function switchTab(id)
-    currentTab = id
-    local t = T()
-    for tid, page in pairs(tabPages) do page.Visible = tid == id end
-    for tid, btn in pairs(tabButtons) do
-        if tid == id then
-            TweenService:Create(btn,TweenInfo.new(0.12),{BackgroundColor3=t.accent,TextColor3=Color3.new(1,1,1)}):Play()
-        else
-            TweenService:Create(btn,TweenInfo.new(0.12),{BackgroundColor3=Color3.fromRGB(22,11,50),TextColor3=Color3.fromRGB(110,95,155)}):Play()
-        end
-    end
-end
-
-for id, btn in pairs(tabButtons) do
-    btn.MouseButton1Click:Connect(function()
-        ripple(btn)
-        switchTab(id)
-    end)
-end
-switchTab("create")
-
-local statusBar = Instance.new("Frame")
-statusBar.Size = UDim2.new(1,0,0,16)
-statusBar.Position = UDim2.new(0,0,1,-16)
-statusBar.BackgroundColor3 = T().bar
-statusBar.BackgroundTransparency = 0.5
-statusBar.BorderSizePixel = 0
-statusBar.ZIndex = 56
-statusBar.Parent = mainFrame
-
-local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(0.7,0,1,0)
-statusLabel.Position = UDim2.new(0,6,0,0)
-statusLabel.BackgroundTransparency = 1
-statusLabel.Text = "Ready"
-statusLabel.TextColor3 = T().success
-statusLabel.TextSize = 7
-statusLabel.Font = Enum.Font.Gotham
-statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-statusLabel.ZIndex = 57
-statusLabel.Parent = statusBar
-
-local toolCountStatus = Instance.new("TextLabel")
-toolCountStatus.Size = UDim2.new(0.3,0,1,0)
-toolCountStatus.Position = UDim2.new(0.7,0,0,0)
-toolCountStatus.BackgroundTransparency = 1
-toolCountStatus.Text = "0 tools"
-toolCountStatus.TextColor3 = T().dim
-toolCountStatus.TextSize = 7
-toolCountStatus.Font = Enum.Font.Gotham
-toolCountStatus.TextXAlignment = Enum.TextXAlignment.Right
-toolCountStatus.ZIndex = 57
-toolCountStatus.Parent = statusBar
-
-local function updateToolCount()
-    local c = 0
-    for _ in pairs(getgenv().ToolCreatorData) do c = c + 1 end
-    toolCountStatus.Text = c.." saved"
-end
-
-local function showStatus(msg, col)
-    statusLabel.Text = msg
-    statusLabel.TextColor3 = col or T().success
-    delay(4, function() if statusLabel.Text == msg then statusLabel.Text = "Ready" statusLabel.TextColor3 = T().dim end end)
-end
-
-local nameLabel = Instance.new("TextLabel")
-nameLabel.Size = UDim2.new(1,0,0,11)
-nameLabel.BackgroundTransparency = 1
-nameLabel.Text = "Tool Name:"
-nameLabel.TextColor3 = T().text
-nameLabel.TextSize = 8
-nameLabel.Font = Enum.Font.GothamBold
-nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-nameLabel.ZIndex = 54
-nameLabel.Parent = createPage
-
-local nameRow = Instance.new("Frame")
-nameRow.Size = UDim2.new(1,0,0,22)
-nameRow.Position = UDim2.new(0,0,0,12)
-nameRow.BackgroundTransparency = 1
-nameRow.ZIndex = 54
-nameRow.Parent = createPage
-
-local nameBox = Instance.new("TextBox")
-nameBox.Size = UDim2.new(0.62,0,1,0)
-nameBox.BackgroundColor3 = T().input
-nameBox.Text = ""
-nameBox.PlaceholderText = "Tool name..."
-nameBox.TextColor3 = T().text
-nameBox.PlaceholderColor3 = T().dim
-nameBox.TextSize = 9
-nameBox.Font = Enum.Font.Gotham
-nameBox.ClearTextOnFocus = false
-nameBox.ZIndex = 54
-nameBox.Parent = nameRow
-Instance.new("UICorner",nameBox).CornerRadius = UDim.new(0,5)
-Instance.new("UIStroke",nameBox).Color = T().accent
-
-local favBtn = Instance.new("TextButton")
-favBtn.Size = UDim2.new(0,22,0,22)
-favBtn.Position = UDim2.new(0.63,2,0,0)
-favBtn.BackgroundColor3 = T().input
-favBtn.Text = "☆"
-favBtn.TextColor3 = Color3.fromRGB(255,215,75)
-favBtn.TextSize = 12
-favBtn.ZIndex = 55
-favBtn.AutoButtonColor = false
-favBtn.ClipsDescendants = true
-favBtn.Parent = nameRow
-Instance.new("UICorner",favBtn).CornerRadius = UDim.new(0,5)
-
-local undoBtn = Instance.new("TextButton")
-undoBtn.Size = UDim2.new(0,30,0,22)
-undoBtn.Position = UDim2.new(0.7,6,0,0)
-undoBtn.BackgroundColor3 = T().btn
-undoBtn.Text = "↩"
-undoBtn.TextColor3 = T().text
-undoBtn.TextSize = 11
-undoBtn.ZIndex = 55
-undoBtn.AutoButtonColor = false
-undoBtn.ClipsDescendants = true
-undoBtn.Parent = nameRow
-Instance.new("UICorner",undoBtn).CornerRadius = UDim.new(0,5)
-
-local redoBtn = Instance.new("TextButton")
-redoBtn.Size = UDim2.new(0,30,0,22)
-redoBtn.Position = UDim2.new(0.85,4,0,0)
-redoBtn.BackgroundColor3 = T().btn
-redoBtn.Text = "↪"
-redoBtn.TextColor3 = T().text
-redoBtn.TextSize = 11
-redoBtn.ZIndex = 55
-redoBtn.AutoButtonColor = false
-redoBtn.ClipsDescendants = true
-redoBtn.Parent = nameRow
-Instance.new("UICorner",redoBtn).CornerRadius = UDim.new(0,5)
-
-local undoStack, redoStack, lastText = {}, {}, ""
-
-favBtn.MouseButton1Click:Connect(function()
-    ripple(favBtn)
-    local n = nameBox.Text
-    if n == "" then return end
-    if getgenv().ToolCreatorFavorites[n] then
-        getgenv().ToolCreatorFavorites[n] = nil
-        favBtn.Text = "☆"
-    else
-        getgenv().ToolCreatorFavorites[n] = true
-        favBtn.Text = "★"
-    end
+ADrop(configPage, "Theme:", {"Galaxy", "Nebula", "Void", "Cosmic", "Blood", "Emerald", "Frost"}, 16, function(theme)
+	local t = themeColors[theme]
+	Tween(GradBG, {BackgroundColor3 = t.bg}, 0.4)
+	Tween(TitleBar, {BackgroundColor3 = t.title}, 0.4)
+	Notify("Theme: " .. theme, t.accent)
 end)
 
-nameBox:GetPropertyChangedSignal("Text"):Connect(function()
-    favBtn.Text = getgenv().ToolCreatorFavorites[nameBox.Text] and "★" or "☆"
+AS(configPage, 17)
+AB(configPage, "🔴 Destroy GUI", 18, function()
+	getgenv().ToolsCreator = false
+	for n, c in pairs(Connections) do c:Disconnect() end
+	for tn, evts in pairs(ToolEvents) do for _, c in pairs(evts) do pcall(function() c:Disconnect() end) end end
+	for tn in pairs(ToolSchedules) do ToolSchedules[tn] = nil end
+	for mn in pairs(Macros) do getgenv()["macro_loop_" .. mn] = false end
+	Connections = {}; ToolEvents = {}
+	ScreenGui:Destroy()
+end, Color3.fromRGB(80, 10, 10))
+
+AS(configPage, 19)
+AL(configPage, "V1.0 | Tools Creator", 20)
+
+SwitchTab("Create")
+
+ToggleBtn.MouseButton1Click:Connect(function()
+	guiOpen = not guiOpen
+	if guiOpen then
+		MainFrame.Visible = true
+		MainFrame.Size = UDim2.new(0, fullSize.X.Offset, 0, 0)
+		MainFrame.BackgroundTransparency = 1
+		Tween(MainFrame, {Size = minimized and miniSize or fullSize, BackgroundTransparency = 0}, 0.3)
+		Tween(ToggleBtn, {BackgroundColor3 = Color3.fromRGB(38, 14, 85)}, 0.2)
+		ToggleBtn.Text = "✦"
+	else
+		Tween(MainFrame, {Size = UDim2.new(0, fullSize.X.Offset, 0, 0), BackgroundTransparency = 1}, 0.25)
+		Tween(ToggleBtn, {BackgroundColor3 = Color3.fromRGB(8, 2, 20)}, 0.2)
+		ToggleBtn.Text = "★"
+		task.delay(0.26, function() if not guiOpen then MainFrame.Visible = false end end)
+	end
 end)
-
-undoBtn.MouseButton1Click:Connect(function()
-    ripple(undoBtn)
-    if #undoStack > 0 then
-        table.insert(redoStack, codeBox.Text)
-        lastText = table.remove(undoStack)
-        codeBox.Text = lastText
-    end
-end)
-
-redoBtn.MouseButton1Click:Connect(function()
-    ripple(redoBtn)
-    if #redoStack > 0 then
-        table.insert(undoStack, codeBox.Text)
-        lastText = table.remove(redoStack)
-        codeBox.Text = lastText
-    end
-end)
-
-local optRow = Instance.new("Frame")
-optRow.Size = UDim2.new(1,0,0,18)
-optRow.Position = UDim2.new(0,0,0,37)
-optRow.BackgroundTransparency = 1
-optRow.ZIndex = 54
-optRow.Parent = createPage
-
-local hasHandle, canDrop, meshIdx = false, true, 1
-local meshTypes = {"Brick","Cylinder","Sphere","Wedge","Head"}
-
-local function optB(text, x, w, on)
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.new(0,w,0,16)
-    b.Position = UDim2.new(0,x,0,0)
-    b.BackgroundColor3 = on and Color3.fromRGB(18,55,30) or Color3.fromRGB(30,12,65)
-    b.Text = text
-    b.TextColor3 = on and Color3.fromRGB(95,255,145) or T().dim
-    b.TextSize = 7
-    b.Font = Enum.Font.GothamBold
-    b.ZIndex = 54
-    b.AutoButtonColor = false
-    b.ClipsDescendants = true
-    b.Parent = optRow
-    Instance.new("UICorner",b).CornerRadius = UDim.new(0,4)
-    return b
-end
-
-local handleBtn = optB("Handle:OFF",0,58,false)
-local dropBtn = optB("Drop:ON",62,48,true)
-local meshBtn = optB("Mesh:Brick",114,62,false)
-
-local colorBox = Instance.new("TextBox")
-colorBox.Size = UDim2.new(0,65,0,16)
-colorBox.Position = UDim2.new(0,180,0,0)
-colorBox.BackgroundColor3 = T().input
-colorBox.Text = "128,0,255"
-colorBox.TextColor3 = T().text
-colorBox.TextSize = 7
-colorBox.Font = Enum.Font.Code
-colorBox.ClearTextOnFocus = false
-colorBox.ZIndex = 54
-colorBox.Parent = optRow
-Instance.new("UICorner",colorBox).CornerRadius = UDim.new(0,4)
-
-local colorPrev = Instance.new("Frame")
-colorPrev.Size = UDim2.new(0,12,0,12)
-colorPrev.Position = UDim2.new(0,248,0,2)
-colorPrev.BackgroundColor3 = Color3.fromRGB(128,0,255)
-colorPrev.ZIndex = 55
-colorPrev.Parent = optRow
-Instance.new("UICorner",colorPrev).CornerRadius = UDim.new(0,3)
-
-colorBox:GetPropertyChangedSignal("Text"):Connect(function()
-    pcall(function() colorPrev.BackgroundColor3 = parseColor(colorBox.Text) end)
-end)
-
-handleBtn.MouseButton1Click:Connect(function()
-    ripple(handleBtn)
-    hasHandle = not hasHandle
-    handleBtn.Text = hasHandle and "Handle:ON" or "Handle:OFF"
-    handleBtn.TextColor3 = hasHandle and Color3.fromRGB(95,255,145) or T().dim
-    TweenService:Create(handleBtn,TweenInfo.new(0.1),{BackgroundColor3=hasHandle and Color3.fromRGB(18,55,30) or Color3.fromRGB(30,12,65)}):Play()
-end)
-
-dropBtn.MouseButton1Click:Connect(function()
-    ripple(dropBtn)
-    canDrop = not canDrop
-    dropBtn.Text = canDrop and "Drop:ON" or "Drop:OFF"
-    dropBtn.TextColor3 = canDrop and Color3.fromRGB(95,255,145) or T().err
-    TweenService:Create(dropBtn,TweenInfo.new(0.1),{BackgroundColor3=canDrop and Color3.fromRGB(18,55,30) or Color3.fromRGB(30,12,65)}):Play()
-end)
-
-meshBtn.MouseButton1Click:Connect(function()
-    ripple(meshBtn)
-    meshIdx = meshIdx % #meshTypes + 1
-    meshBtn.Text = "Mesh:"..meshTypes[meshIdx]
-end)
-
-local codeHeader = Instance.new("Frame")
-codeHeader.Size = UDim2.new(1,0,0,12)
-codeHeader.Position = UDim2.new(0,0,0,57)
-codeHeader.BackgroundTransparency = 1
-codeHeader.ZIndex = 54
-codeHeader.Parent = createPage
-
-local codeLbl = Instance.new("TextLabel")
-codeLbl.Size = UDim2.new(0.35,0,1,0)
-codeLbl.BackgroundTransparency = 1
-codeLbl.Text = "Script:"
-codeLbl.TextColor3 = T().text
-codeLbl.TextSize = 8
-codeLbl.Font = Enum.Font.GothamBold
-codeLbl.TextXAlignment = Enum.TextXAlignment.Left
-codeLbl.ZIndex = 54
-codeLbl.Parent = codeHeader
-
-local lineInfo = Instance.new("TextLabel")
-lineInfo.Size = UDim2.new(0.65,0,1,0)
-lineInfo.Position = UDim2.new(0.35,0,0,0)
-lineInfo.BackgroundTransparency = 1
-lineInfo.Text = "L:0 C:0"
-lineInfo.TextColor3 = T().dim
-lineInfo.TextSize = 7
-lineInfo.Font = Enum.Font.Gotham
-lineInfo.TextXAlignment = Enum.TextXAlignment.Right
-lineInfo.ZIndex = 54
-lineInfo.Parent = codeHeader
-
-local codeScroll = Instance.new("ScrollingFrame")
-codeScroll.Size = UDim2.new(1,0,1,-122)
-codeScroll.Position = UDim2.new(0,0,0,71)
-codeScroll.BackgroundColor3 = Color3.fromRGB(5,3,14)
-codeScroll.ScrollBarThickness = 3
-codeScroll.ScrollBarImageColor3 = T().accent
-codeScroll.CanvasSize = UDim2.new(0,0,0,400)
-codeScroll.ZIndex = 54
-codeScroll.BorderSizePixel = 0
-codeScroll.Parent = createPage
-Instance.new("UICorner",codeScroll).CornerRadius = UDim.new(0,6)
-Instance.new("UIStroke",codeScroll).Color = T().accent
-
-local lineNums = Instance.new("TextLabel")
-lineNums.Size = UDim2.new(0,20,0,400)
-lineNums.Position = UDim2.new(0,2,0,2)
-lineNums.BackgroundTransparency = 1
-lineNums.Text = "1"
-lineNums.TextColor3 = Color3.fromRGB(55,40,95)
-lineNums.TextSize = 10
-lineNums.Font = Enum.Font.Code
-lineNums.TextXAlignment = Enum.TextXAlignment.Right
-lineNums.TextYAlignment = Enum.TextYAlignment.Top
-lineNums.ZIndex = 55
-lineNums.Parent = codeScroll
-
-local codeBox = Instance.new("TextBox")
-codeBox.Size = UDim2.new(1,-26,0,400)
-codeBox.Position = UDim2.new(0,24,0,2)
-codeBox.BackgroundTransparency = 1
-codeBox.Text = ""
-codeBox.PlaceholderText = "print('Hello World')"
-codeBox.TextColor3 = T().code
-codeBox.PlaceholderColor3 = Color3.fromRGB(35,65,35)
-codeBox.TextSize = getgenv().ToolCreatorSettings.codeSize
-codeBox.Font = Enum.Font.Code
-codeBox.ClearTextOnFocus = false
-codeBox.MultiLine = true
-codeBox.TextWrapped = true
-codeBox.TextXAlignment = Enum.TextXAlignment.Left
-codeBox.TextYAlignment = Enum.TextYAlignment.Top
-codeBox.ZIndex = 55
-codeBox.Parent = codeScroll
-
-codeBox:GetPropertyChangedSignal("Text"):Connect(function()
-    local txt = codeBox.Text
-    if txt ~= lastText then
-        table.insert(undoStack, lastText)
-        if #undoStack > 60 then table.remove(undoStack,1) end
-        redoStack = {}
-        lastText = txt
-    end
-    local lines = select(2, txt:gsub("\n","")) + 1
-    lineInfo.Text = "L:"..lines.." C:"..#txt
-    local ns = {}
-    for i=1,lines do ns[i] = tostring(i) end
-    lineNums.Text = table.concat(ns,"\n")
-    local ts = TextService:GetTextSize(txt, codeBox.TextSize, codeBox.Font, Vector2.new(codeScroll.AbsoluteSize.X-30, math.huge))
-    local h = math.max(400, ts.Y+30)
-    codeBox.Size = UDim2.new(1,-26,0,h)
-    lineNums.Size = UDim2.new(0,20,0,h)
-    codeScroll.CanvasSize = UDim2.new(0,0,0,h)
-    if getgenv().ToolCreatorSettings.autoSave and nameBox.Text ~= "" and #txt > 0 then
-        getgenv().ToolCreatorData[nameBox.Text] = txt
-        updateToolCount()
-    end
-end)
-
-local btmBar = Instance.new("Frame")
-btmBar.Size = UDim2.new(1,0,0,44)
-btmBar.Position = UDim2.new(0,0,1,-50)
-btmBar.BackgroundTransparency = 1
-btmBar.ZIndex = 54
-btmBar.Parent = createPage
-
-local function cBtn(text, pos, sz, color)
-    local b = Instance.new("TextButton")
-    b.Size = sz
-    b.Position = pos
-    b.BackgroundColor3 = color
-    b.Text = text
-    b.TextColor3 = Color3.fromRGB(235,225,255)
-    b.TextSize = 9
-    b.Font = Enum.Font.GothamBold
-    b.ZIndex = 55
-    b.AutoButtonColor = false
-    b.ClipsDescendants = true
-    b.Parent = btmBar
-    Instance.new("UICorner",b).CornerRadius = UDim.new(0,6)
-    return b
-end
-
-local createBtn = cBtn("⚒ Create",UDim2.new(0,0,0,0),UDim2.new(0.32,0,0,19),T().btn)
-Instance.new("UIStroke",createBtn).Color = T().accent
-local saveBtn = cBtn("💾 Save",UDim2.new(0.34,0,0,0),UDim2.new(0.32,0,0,19),Color3.fromRGB(18,48,95))
-local testBtn = cBtn("▶ Test",UDim2.new(0.68,0,0,0),UDim2.new(0.32,0,0,19),Color3.fromRGB(18,65,38))
-local createRunBtn = cBtn("⚡ Create+Equip",UDim2.new(0,0,0,22),UDim2.new(0.49,0,0,19),Color3.fromRGB(65,30,10))
-local clearCodeBtn = cBtn("🗑 Clear",UDim2.new(0.51,0,0,22),UDim2.new(0.49,0,0,19),Color3.fromRGB(65,20,20))
-
-local consoleScroll = Instance.new("ScrollingFrame")
-consoleScroll.Size = UDim2.new(1,0,1,-52)
-consoleScroll.BackgroundColor3 = Color3.fromRGB(4,2,12)
-consoleScroll.ScrollBarThickness = 3
-consoleScroll.ScrollBarImageColor3 = T().accent
-consoleScroll.CanvasSize = UDim2.new(0,0,0,0)
-consoleScroll.ZIndex = 54
-consoleScroll.BorderSizePixel = 0
-consoleScroll.Parent = consolePage
-Instance.new("UICorner",consoleScroll).CornerRadius = UDim.new(0,6)
-Instance.new("UIStroke",consoleScroll).Color = Color3.fromRGB(30,15,65)
-local consoleLayout = Instance.new("UIListLayout",consoleScroll)
-consoleLayout.Padding = UDim.new(0,1)
-Instance.new("UIPadding",consoleScroll).PaddingTop = UDim.new(0,2)
-
-local consoleBtm = Instance.new("Frame")
-consoleBtm.Size = UDim2.new(1,0,0,48)
-consoleBtm.Position = UDim2.new(0,0,1,-50)
-consoleBtm.BackgroundTransparency = 1
-consoleBtm.ZIndex = 54
-consoleBtm.Parent = consolePage
-
-local consoleInput = Instance.new("TextBox")
-consoleInput.Size = UDim2.new(0.76,0,0,20)
-consoleInput.BackgroundColor3 = T().input
-consoleInput.Text = ""
-consoleInput.PlaceholderText = "> command..."
-consoleInput.TextColor3 = T().code
-consoleInput.PlaceholderColor3 = T().dim
-consoleInput.TextSize = 8
-consoleInput.Font = Enum.Font.Code
-consoleInput.ClearTextOnFocus = false
-consoleInput.ZIndex = 55
-consoleInput.Parent = consoleBtm
-Instance.new("UICorner",consoleInput).CornerRadius = UDim.new(0,5)
-Instance.new("UIStroke",consoleInput).Color = T().accent
-
-local consoleRunBtn = Instance.new("TextButton")
-consoleRunBtn.Size = UDim2.new(0.22,0,0,20)
-consoleRunBtn.Position = UDim2.new(0.78,2,0,0)
-consoleRunBtn.BackgroundColor3 = Color3.fromRGB(18,65,38)
-consoleRunBtn.Text = "Run"
-consoleRunBtn.TextColor3 = Color3.fromRGB(145,255,175)
-consoleRunBtn.TextSize = 8
-consoleRunBtn.Font = Enum.Font.GothamBold
-consoleRunBtn.ZIndex = 55
-consoleRunBtn.AutoButtonColor = false
-consoleRunBtn.ClipsDescendants = true
-consoleRunBtn.Parent = consoleBtm
-Instance.new("UICorner",consoleRunBtn).CornerRadius = UDim.new(0,5)
-
-local clearConBtn = Instance.new("TextButton")
-clearConBtn.Size = UDim2.new(1,0,0,20)
-clearConBtn.Position = UDim2.new(0,0,0,24)
-clearConBtn.BackgroundColor3 = Color3.fromRGB(50,16,22)
-clearConBtn.Text = "🗑 Clear Console"
-clearConBtn.TextColor3 = Color3.fromRGB(255,185,185)
-clearConBtn.TextSize = 8
-clearConBtn.Font = Enum.Font.GothamBold
-clearConBtn.ZIndex = 55
-clearConBtn.AutoButtonColor = false
-clearConBtn.ClipsDescendants = true
-clearConBtn.Parent = consoleBtm
-Instance.new("UICorner",clearConBtn).CornerRadius = UDim.new(0,5)
-
-local function addConsoleLine(text, col)
-    consoleLineCount = (consoleLineCount or 0) + 1
-    local time = os.date("%H:%M:%S")
-    local l = Instance.new("TextLabel")
-    l.Size = UDim2.new(1,-6,0,13)
-    l.BackgroundTransparency = consoleLineCount%2==0 and 0.95 or 1
-    l.BackgroundColor3 = Color3.fromRGB(22,11,48)
-    l.Text = "["..time.."] "..text
-    l.TextColor3 = col or T().code
-    l.TextSize = 7
-    l.Font = Enum.Font.Code
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.TextWrapped = true
-    l.ZIndex = 55
-    l.Parent = consoleScroll
-    local th = TextService:GetTextSize(l.Text, 7, Enum.Font.Code, Vector2.new(consoleScroll.AbsoluteSize.X-14, math.huge))
-    l.Size = UDim2.new(1,-6,0,math.max(13,th.Y+3))
-    consoleScroll.CanvasSize = UDim2.new(0,0,0,consoleLayout.AbsoluteContentSize.Y+8)
-    consoleScroll.CanvasPosition = Vector2.new(0,math.huge)
-    if col and (col == T().err or col == Color3.fromRGB(255,70,70)) then
-        errCount = errCount + 1
-        badge.Text = tostring(errCount)
-        if currentTab ~= "console" then badge.Visible = true end
-    end
-    if consoleLineCount > 250 then
-        for _,c in pairs(consoleScroll:GetChildren()) do
-            if c:IsA("TextLabel") then c:Destroy() break end
-        end
-    end
-end
-
-local consoleLineCount = 0
-
-consoleRunBtn.MouseButton1Click:Connect(function()
-    ripple(consoleRunBtn)
-    local cmd = consoleInput.Text
-    if cmd == "" then return end
-    addConsoleLine("> "..cmd, Color3.fromRGB(195,195,255))
-    local ok, err = pcall(function() local fn = loadstring(cmd) if fn then fn() end end)
-    if ok then addConsoleLine("OK", T().success) else addConsoleLine("ERR: "..tostring(err), T().err) end
-    consoleInput.Text = ""
-end)
-
-clearConBtn.MouseButton1Click:Connect(function()
-    ripple(clearConBtn)
-    for _,c in pairs(consoleScroll:GetChildren()) do if c:IsA("TextLabel") then c:Destroy() end end
-    consoleLineCount = 0
-    errCount = 0
-    badge.Visible = false
-    badge.Text = "0"
-    consoleScroll.CanvasSize = UDim2.new(0,0,0,0)
-    addConsoleLine("Console cleared.", Color3.fromRGB(115,165,255))
-end)
-
-addConsoleLine("Tools Creator v1.0 loaded.", Color3.fromRGB(115,165,255))
-
-local searchBox = Instance.new("TextBox")
-searchBox.Size = UDim2.new(1,0,0,20)
-searchBox.Position = UDim2.new(0,0,0,14)
-searchBox.BackgroundColor3 = T().input
-searchBox.Text = ""
-searchBox.PlaceholderText = "🔍 Search..."
-searchBox.TextColor3 = T().text
-searchBox.PlaceholderColor3 = T().dim
-searchBox.TextSize = 8
-searchBox.Font = Enum.Font.Gotham
-searchBox.ClearTextOnFocus = false
-searchBox.ZIndex = 54
-searchBox.Parent = managePage
-Instance.new("UICorner",searchBox).CornerRadius = UDim.new(0,5)
-Instance.new("UIStroke",searchBox).Color = T().accent
-
-local mTitle = Instance.new("TextLabel")
-mTitle.Size = UDim2.new(1,0,0,12)
-mTitle.BackgroundTransparency = 1
-mTitle.Text = "📁 Saved Tools"
-mTitle.TextColor3 = T().text
-mTitle.TextSize = 9
-mTitle.Font = Enum.Font.GothamBold
-mTitle.TextXAlignment = Enum.TextXAlignment.Left
-mTitle.ZIndex = 54
-mTitle.Parent = managePage
-
-local mScroll = Instance.new("ScrollingFrame")
-mScroll.Size = UDim2.new(1,0,1,-90)
-mScroll.Position = UDim2.new(0,0,0,38)
-mScroll.BackgroundColor3 = Color3.fromRGB(6,3,16)
-mScroll.ScrollBarThickness = 3
-mScroll.ScrollBarImageColor3 = T().accent
-mScroll.CanvasSize = UDim2.new(0,0,0,0)
-mScroll.ZIndex = 54
-mScroll.BorderSizePixel = 0
-mScroll.Parent = managePage
-Instance.new("UICorner",mScroll).CornerRadius = UDim.new(0,6)
-Instance.new("UIStroke",mScroll).Color = Color3.fromRGB(30,15,60)
-local mLayout = Instance.new("UIListLayout",mScroll)
-mLayout.Padding = UDim.new(0,2)
-Instance.new("UIPadding",mScroll).PaddingTop = UDim.new(0,2)
-
-local mBtmBar = Instance.new("Frame")
-mBtmBar.Size = UDim2.new(1,0,0,46)
-mBtmBar.Position = UDim2.new(0,0,1,-48)
-mBtmBar.BackgroundTransparency = 1
-mBtmBar.ZIndex = 54
-mBtmBar.Parent = managePage
-
-local selectedSave = nil
-
-local function mB(text, pos, color)
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.new(0.48,0,0,18)
-    b.Position = pos
-    b.BackgroundColor3 = color
-    b.Text = text
-    b.TextColor3 = Color3.fromRGB(235,225,255)
-    b.TextSize = 8
-    b.Font = Enum.Font.GothamBold
-    b.ZIndex = 55
-    b.AutoButtonColor = false
-    b.ClipsDescendants = true
-    b.Parent = mBtmBar
-    Instance.new("UICorner",b).CornerRadius = UDim.new(0,5)
-    return b
-end
-
-local delBtn = mB("🗑 Delete",UDim2.new(0,0,0,0),Color3.fromRGB(85,16,22))
-local loadBtn = mB("📥 Load",UDim2.new(0.52,0,0,0),Color3.fromRGB(16,48,80))
-local copyBtn = mB("📋 Copy",UDim2.new(0,0,0,22),Color3.fromRGB(42,28,80))
-local clearAllBtn = mB("⚠ Clear All",UDim2.new(0.52,0,0,22),Color3.fromRGB(72,25,16))
-
-local function refreshManageList(filter)
-    for _,c in pairs(mScroll:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
-    selectedSave = nil
-    local sorted = {}
-    for name in pairs(getgenv().ToolCreatorData) do table.insert(sorted, name) end
-    table.sort(sorted, function(a,b)
-        local fa = getgenv().ToolCreatorFavorites[a] and 1 or 0
-        local fb = getgenv().ToolCreatorFavorites[b] and 1 or 0
-        if fa ~= fb then return fa > fb end
-        return a < b
-    end)
-    local count = 0
-    for _, name in ipairs(sorted) do
-        local code = getgenv().ToolCreatorData[name]
-        if not filter or filter == "" or name:lower():find(filter:lower()) then
-            count = count + 1
-            local item = Instance.new("TextButton")
-            item.Size = UDim2.new(1,-6,0,30)
-            item.BackgroundColor3 = T().card
-            item.Text = ""
-            item.ZIndex = 55
-            item.AutoButtonColor = false
-            item.Parent = mScroll
-            Instance.new("UICorner",item).CornerRadius = UDim.new(0,5)
-            local iStroke = Instance.new("UIStroke",item)
-            iStroke.Color = Color3.fromRGB(30,15,60)
-            local icoT = getgenv().ToolCreatorFavorites[name] and "★" or "⚒"
-            local ico = Instance.new("TextLabel")
-            ico.Size = UDim2.new(0,14,1,0)
-            ico.Position = UDim2.new(0,3,0,0)
-            ico.BackgroundTransparency = 1
-            ico.Text = icoT
-            ico.TextColor3 = getgenv().ToolCreatorFavorites[name] and Color3.fromRGB(255,215,75) or T().accent
-            ico.TextSize = 9
-            ico.ZIndex = 56
-            ico.Parent = item
-            local iName = Instance.new("TextLabel")
-            iName.Size = UDim2.new(0.55,-18,0,13)
-            iName.Position = UDim2.new(0,20,0,2)
-            iName.BackgroundTransparency = 1
-            iName.Text = name
-            iName.TextColor3 = T().text
-            iName.TextSize = 8
-            iName.Font = Enum.Font.GothamBold
-            iName.TextXAlignment = Enum.TextXAlignment.Left
-            iName.TextTruncate = Enum.TextTruncate.AtEnd
-            iName.ZIndex = 56
-            iName.Parent = item
-            local lc = select(2, code:gsub("\n","")) + 1
-            local iInfo = Instance.new("TextLabel")
-            iInfo.Size = UDim2.new(1,-24,0,10)
-            iInfo.Position = UDim2.new(0,20,0,16)
-            iInfo.BackgroundTransparency = 1
-            iInfo.Text = lc.."L · "..#code.."C"
-            iInfo.TextColor3 = T().dim
-            iInfo.TextSize = 6
-            iInfo.Font = Enum.Font.Gotham
-            iInfo.TextXAlignment = Enum.TextXAlignment.Left
-            iInfo.ZIndex = 56
-            iInfo.Parent = item
-            local ql = Instance.new("TextButton")
-            ql.Size = UDim2.new(0,24,0,16)
-            ql.Position = UDim2.new(1,-28,0.5,-8)
-            ql.BackgroundColor3 = Color3.fromRGB(16,50,78)
-            ql.Text = "▶"
-            ql.TextColor3 = Color3.fromRGB(135,205,255)
-            ql.TextSize = 9
-            ql.ZIndex = 57
-            ql.AutoButtonColor = false
-            ql.ClipsDescendants = true
-            ql.Parent = item
-            Instance.new("UICorner",ql).CornerRadius = UDim.new(0,4)
-            ql.MouseButton1Click:Connect(function()
-                ripple(ql)
-                nameBox.Text = name
-                lastText = code
-                codeBox.Text = code
-                undoStack, redoStack = {}, {}
-                switchTab("create")
-                showStatus("Loaded: "..name, T().success)
-            end)
-            item.MouseButton1Click:Connect(function()
-                selectedSave = name
-                for _,c in pairs(mScroll:GetChildren()) do
-                    if c:IsA("TextButton") then
-                        local s = c:FindFirstChildOfClass("UIStroke")
-                        if s then s.Color = Color3.fromRGB(30,15,60) end
-                        c.BackgroundColor3 = T().card
-                    end
-                end
-                iStroke.Color = T().accent
-                item.BackgroundColor3 = Color3.fromRGB(28,15,62)
-            end)
-        end
-    end
-    mScroll.CanvasSize = UDim2.new(0,0,0,count*32+8)
-    updateToolCount()
-end
-
-searchBox:GetPropertyChangedSignal("Text"):Connect(function() refreshManageList(searchBox.Text) end)
-
-local tmpTitle = Instance.new("TextLabel")
-tmpTitle.Size = UDim2.new(1,0,0,12)
-tmpTitle.BackgroundTransparency = 1
-tmpTitle.Text = "📦 Templates"
-tmpTitle.TextColor3 = T().text
-tmpTitle.TextSize = 9
-tmpTitle.Font = Enum.Font.GothamBold
-tmpTitle.TextXAlignment = Enum.TextXAlignment.Left
-tmpTitle.ZIndex = 54
-tmpTitle.Parent = templatesPage
-
-local tmpSearch = Instance.new("TextBox")
-tmpSearch.Size = UDim2.new(1,0,0,20)
-tmpSearch.Position = UDim2.new(0,0,0,14)
-tmpSearch.BackgroundColor3 = T().input
-tmpSearch.Text = ""
-tmpSearch.PlaceholderText = "🔍 Search templates..."
-tmpSearch.TextColor3 = T().text
-tmpSearch.PlaceholderColor3 = T().dim
-tmpSearch.TextSize = 8
-tmpSearch.Font = Enum.Font.Gotham
-tmpSearch.ClearTextOnFocus = false
-tmpSearch.ZIndex = 54
-tmpSearch.Parent = templatesPage
-Instance.new("UICorner",tmpSearch).CornerRadius = UDim.new(0,5)
-Instance.new("UIStroke",tmpSearch).Color = T().accent
-
-local tmpScroll = Instance.new("ScrollingFrame")
-tmpScroll.Size = UDim2.new(1,0,1,-40)
-tmpScroll.Position = UDim2.new(0,0,0,38)
-tmpScroll.BackgroundColor3 = Color3.fromRGB(6,3,16)
-tmpScroll.ScrollBarThickness = 3
-tmpScroll.ScrollBarImageColor3 = T().accent
-tmpScroll.CanvasSize = UDim2.new(0,0,0,0)
-tmpScroll.ZIndex = 54
-tmpScroll.BorderSizePixel = 0
-tmpScroll.Parent = templatesPage
-Instance.new("UICorner",tmpScroll).CornerRadius = UDim.new(0,6)
-Instance.new("UIStroke",tmpScroll).Color = Color3.fromRGB(30,15,60)
-local tmpLayout = Instance.new("UIListLayout",tmpScroll)
-tmpLayout.Padding = UDim.new(0,3)
-Instance.new("UIPadding",tmpScroll).PaddingTop = UDim.new(0,3)
-
-local function refreshTemplates(filter)
-    for _,c in pairs(tmpScroll:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
-    local count = 0
-    for name, code in pairs(getgenv().ToolCreatorTemplates) do
-        if not filter or filter == "" or name:lower():find(filter:lower()) then
-            count = count + 1
-            local tf = Instance.new("Frame")
-            tf.Size = UDim2.new(1,-6,0,42)
-            tf.BackgroundColor3 = T().card
-            tf.BorderSizePixel = 0
-            tf.ZIndex = 55
-            tf.Parent = tmpScroll
-            Instance.new("UICorner",tf).CornerRadius = UDim.new(0,5)
-            Instance.new("UIStroke",tf).Color = Color3.fromRGB(35,18,70)
-            local tn = Instance.new("TextLabel")
-            tn.Size = UDim2.new(1,-55,0,14)
-            tn.Position = UDim2.new(0,6,0,3)
-            tn.BackgroundTransparency = 1
-            tn.Text = "📜 "..name
-            tn.TextColor3 = T().text
-            tn.TextSize = 8
-            tn.Font = Enum.Font.GothamBold
-            tn.TextXAlignment = Enum.TextXAlignment.Left
-            tn.TextTruncate = Enum.TextTruncate.AtEnd
-            tn.ZIndex = 56
-            tn.Parent = tf
-            local prev = Instance.new("TextLabel")
-            prev.Size = UDim2.new(1,-10,0,12)
-            prev.Position = UDim2.new(0,6,0,18)
-            prev.BackgroundTransparency = 1
-            prev.Text = code:gsub("\n"," "):sub(1,55)
-            prev.TextColor3 = T().dim
-            prev.TextSize = 6
-            prev.Font = Enum.Font.Code
-            prev.TextXAlignment = Enum.TextXAlignment.Left
-            prev.TextTruncate = Enum.TextTruncate.AtEnd
-            prev.ZIndex = 56
-            prev.Parent = tf
-            local useB = Instance.new("TextButton")
-            useB.Size = UDim2.new(0,32,0,16)
-            useB.Position = UDim2.new(1,-38,0,3)
-            useB.BackgroundColor3 = T().btn
-            useB.Text = "Use"
-            useB.TextColor3 = Color3.fromRGB(225,215,255)
-            useB.TextSize = 7
-            useB.Font = Enum.Font.GothamBold
-            useB.ZIndex = 57
-            useB.AutoButtonColor = false
-            useB.ClipsDescendants = true
-            useB.Parent = tf
-            Instance.new("UICorner",useB).CornerRadius = UDim.new(0,4)
-            useB.MouseButton1Click:Connect(function()
-                ripple(useB)
-                nameBox.Text = name
-                lastText = code
-                codeBox.Text = code
-                undoStack, redoStack = {}, {}
-                switchTab("create")
-                showStatus("Template: "..name, T().success)
-                notify("Template", name.." loaded!", 2, "📦")
-            end)
-            local addB = Instance.new("TextButton")
-            addB.Size = UDim2.new(0,16,0,16)
-            addB.Position = UDim2.new(1,-38,0,22)
-            addB.BackgroundColor3 = Color3.fromRGB(16,50,82)
-            addB.Text = "+"
-            addB.TextColor3 = Color3.fromRGB(140,210,255)
-            addB.TextSize = 10
-            addB.ZIndex = 57
-            addB.AutoButtonColor = false
-            addB.ClipsDescendants = true
-            addB.Parent = tf
-            Instance.new("UICorner",addB).CornerRadius = UDim.new(0,4)
-            addB.MouseButton1Click:Connect(function()
-                ripple(addB)
-                codeBox.Text = codeBox.Text ~= "" and codeBox.Text.."\n"..code or code
-                showStatus("Appended: "..name, Color3.fromRGB(175,195,255))
-            end)
-        end
-    end
-    tmpScroll.CanvasSize = UDim2.new(0,0,0,count*45+10)
-end
-
-tmpSearch:GetPropertyChangedSignal("Text"):Connect(function() refreshTemplates(tmpSearch.Text) end)
-refreshTemplates()
-
-local snpTitle = Instance.new("TextLabel")
-snpTitle.Size = UDim2.new(1,0,0,12)
-snpTitle.BackgroundTransparency = 1
-snpTitle.Text = "✂ Code Snippets"
-snpTitle.TextColor3 = T().text
-snpTitle.TextSize = 9
-snpTitle.Font = Enum.Font.GothamBold
-snpTitle.TextXAlignment = Enum.TextXAlignment.Left
-snpTitle.ZIndex = 54
-snpTitle.Parent = snippetsPage
-
-local snpRow = Instance.new("Frame")
-snpRow.Size = UDim2.new(1,0,0,22)
-snpRow.Position = UDim2.new(0,0,0,14)
-snpRow.BackgroundTransparency = 1
-snpRow.ZIndex = 54
-snpRow.Parent = snippetsPage
-
-local snpNameBox = Instance.new("TextBox")
-snpNameBox.Size = UDim2.new(0.55,0,1,0)
-snpNameBox.BackgroundColor3 = T().input
-snpNameBox.Text = ""
-snpNameBox.PlaceholderText = "Snippet name..."
-snpNameBox.TextColor3 = T().text
-snpNameBox.PlaceholderColor3 = T().dim
-snpNameBox.TextSize = 8
-snpNameBox.Font = Enum.Font.Gotham
-snpNameBox.ClearTextOnFocus = false
-snpNameBox.ZIndex = 55
-snpNameBox.Parent = snpRow
-Instance.new("UICorner",snpNameBox).CornerRadius = UDim.new(0,5)
-Instance.new("UIStroke",snpNameBox).Color = T().accent
-
-local snpSaveBtn = Instance.new("TextButton")
-snpSaveBtn.Size = UDim2.new(0.2,0,1,0)
-snpSaveBtn.Position = UDim2.new(0.57,2,0,0)
-snpSaveBtn.BackgroundColor3 = Color3.fromRGB(18,48,95)
-snpSaveBtn.Text = "Save"
-snpSaveBtn.TextColor3 = Color3.fromRGB(175,210,255)
-snpSaveBtn.TextSize = 8
-snpSaveBtn.Font = Enum.Font.GothamBold
-snpSaveBtn.ZIndex = 55
-snpSaveBtn.AutoButtonColor = false
-snpSaveBtn.ClipsDescendants = true
-snpSaveBtn.Parent = snpRow
-Instance.new("UICorner",snpSaveBtn).CornerRadius = UDim.new(0,5)
-
-local snpInsertBtn = Instance.new("TextButton")
-snpInsertBtn.Size = UDim2.new(0.2,0,1,0)
-snpInsertBtn.Position = UDim2.new(0.79,2,0,0)
-snpInsertBtn.BackgroundColor3 = Color3.fromRGB(18,65,38)
-snpInsertBtn.Text = "Insert"
-snpInsertBtn.TextColor3 = Color3.fromRGB(145,255,175)
-snpInsertBtn.TextSize = 8
-snpInsertBtn.Font = Enum.Font.GothamBold
-snpInsertBtn.ZIndex = 55
-snpInsertBtn.AutoButtonColor = false
-snpInsertBtn.ClipsDescendants = true
-snpInsertBtn.Parent = snpRow
-Instance.new("UICorner",snpInsertBtn).CornerRadius = UDim.new(0,5)
-
-local snpScroll = Instance.new("ScrollingFrame")
-snpScroll.Size = UDim2.new(1,0,1,-42)
-snpScroll.Position = UDim2.new(0,0,0,40)
-snpScroll.BackgroundColor3 = Color3.fromRGB(6,3,16)
-snpScroll.ScrollBarThickness = 3
-snpScroll.ScrollBarImageColor3 = T().accent
-snpScroll.CanvasSize = UDim2.new(0,0,0,0)
-snpScroll.ZIndex = 54
-snpScroll.BorderSizePixel = 0
-snpScroll.Parent = snippetsPage
-Instance.new("UICorner",snpScroll).CornerRadius = UDim.new(0,6)
-Instance.new("UIStroke",snpScroll).Color = Color3.fromRGB(30,15,60)
-local snpLayout = Instance.new("UIListLayout",snpScroll)
-snpLayout.Padding = UDim.new(0,2)
-Instance.new("UIPadding",snpScroll).PaddingTop = UDim.new(0,2)
-
-local function refreshSnippets()
-    for _,c in pairs(snpScroll:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
-    local count = 0
-    for name, code in pairs(getgenv().ToolCreatorSnippets) do
-        count = count + 1
-        local sf = Instance.new("Frame")
-        sf.Size = UDim2.new(1,-6,0,30)
-        sf.BackgroundColor3 = T().card
-        sf.BorderSizePixel = 0
-        sf.ZIndex = 55
-        sf.Parent = snpScroll
-        Instance.new("UICorner",sf).CornerRadius = UDim.new(0,5)
-        Instance.new("UIStroke",sf).Color = Color3.fromRGB(30,15,60)
-        local sn = Instance.new("TextLabel")
-        sn.Size = UDim2.new(0.5,0,0,14)
-        sn.Position = UDim2.new(0,6,0,2)
-        sn.BackgroundTransparency = 1
-        sn.Text = "✂ "..name
-        sn.TextColor3 = T().text
-        sn.TextSize = 8
-        sn.Font = Enum.Font.GothamBold
-        sn.TextXAlignment = Enum.TextXAlignment.Left
-        sn.TextTruncate = Enum.TextTruncate.AtEnd
-        sn.ZIndex = 56
-        sn.Parent = sf
-        local sp = Instance.new("TextLabel")
-        sp.Size = UDim2.new(1,-60,0,10)
-        sp.Position = UDim2.new(0,6,0,17)
-        sp.BackgroundTransparency = 1
-        sp.Text = code:gsub("\n"," "):sub(1,40)
-        sp.TextColor3 = T().dim
-        sp.TextSize = 6
-        sp.Font = Enum.Font.Code
-        sp.TextXAlignment = Enum.TextXAlignment.Left
-        sp.TextTruncate = Enum.TextTruncate.AtEnd
-        sp.ZIndex = 56
-        sp.Parent = sf
-        local insB = Instance.new("TextButton")
-        insB.Size = UDim2.new(0,22,0,14)
-        insB.Position = UDim2.new(1,-50,0.5,-7)
-        insB.BackgroundColor3 = Color3.fromRGB(18,65,38)
-        insB.Text = "+"
-        insB.TextColor3 = Color3.fromRGB(145,255,175)
-        insB.TextSize = 10
-        insB.ZIndex = 57
-        insB.AutoButtonColor = false
-        insB.ClipsDescendants = true
-        insB.Parent = sf
-        Instance.new("UICorner",insB).CornerRadius = UDim.new(0,4)
-        insB.MouseButton1Click:Connect(function()
-            ripple(insB)
-            codeBox.Text = codeBox.Text ~= "" and codeBox.Text.."\n"..code or code
-            showStatus("Inserted: "..name, T().success)
-        end)
-        local delB = Instance.new("TextButton")
-        delB.Size = UDim2.new(0,22,0,14)
-        delB.Position = UDim2.new(1,-25,0.5,-7)
-        delB.BackgroundColor3 = Color3.fromRGB(75,16,18)
-        delB.Text = "✕"
-        delB.TextColor3 = Color3.fromRGB(255,175,175)
-        delB.TextSize = 8
-        delB.ZIndex = 57
-        delB.AutoButtonColor = false
-        delB.ClipsDescendants = true
-        delB.Parent = sf
-        Instance.new("UICorner",delB).CornerRadius = UDim.new(0,4)
-        delB.MouseButton1Click:Connect(function()
-            ripple(delB)
-            getgenv().ToolCreatorSnippets[name] = nil
-            refreshSnippets()
-            showStatus("Snippet deleted: "..name, T().warn)
-        end)
-    end
-    snpScroll.CanvasSize = UDim2.new(0,0,0,count*32+8)
-end
-
-snpSaveBtn.MouseButton1Click:Connect(function()
-    ripple(snpSaveBtn)
-    local n = snpNameBox.Text
-    local c = codeBox.Text
-    if n == "" then showStatus("Enter snippet name!", T().err) return end
-    if c == "" then showStatus("Write code first!", T().err) return end
-    getgenv().ToolCreatorSnippets[n] = c
-    refreshSnippets()
-    showStatus("Snippet saved: "..n, T().success)
-    notify("Snippet", "Saved: "..n, 2, "✂")
-end)
-
-snpInsertBtn.MouseButton1Click:Connect(function()
-    ripple(snpInsertBtn)
-    local n = snpNameBox.Text
-    if n == "" or not getgenv().ToolCreatorSnippets[n] then showStatus("Snippet not found!", T().err) return end
-    codeBox.Text = codeBox.Text ~= "" and codeBox.Text.."\n"..getgenv().ToolCreatorSnippets[n] or getgenv().ToolCreatorSnippets[n]
-    showStatus("Inserted: "..n, T().success)
-end)
-
-refreshSnippets()
-
-local settScroll = Instance.new("ScrollingFrame")
-settScroll.Size = UDim2.new(1,0,1,0)
-settScroll.BackgroundTransparency = 1
-settScroll.ScrollBarThickness = 3
-settScroll.ScrollBarImageColor3 = T().accent
-settScroll.CanvasSize = UDim2.new(0,0,0,320)
-settScroll.ZIndex = 54
-settScroll.BorderSizePixel = 0
-settScroll.Parent = settingsPage
-
-local function sL(text, y)
-    local l = Instance.new("TextLabel")
-    l.Size = UDim2.new(0.5,0,0,16)
-    l.Position = UDim2.new(0,0,0,y)
-    l.BackgroundTransparency = 1
-    l.Text = text
-    l.TextColor3 = T().text
-    l.TextSize = 8
-    l.Font = Enum.Font.GothamBold
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.ZIndex = 55
-    l.Parent = settScroll
-    return l
-end
-
-local function sB(text, y, w, color)
-    local b = Instance.new("TextButton")
-    b.Size = UDim2.new(0,w,0,16)
-    b.Position = UDim2.new(0.52,0,0,y)
-    b.BackgroundColor3 = color
-    b.Text = text
-    b.TextColor3 = Color3.fromRGB(225,215,255)
-    b.TextSize = 7
-    b.Font = Enum.Font.GothamBold
-    b.ZIndex = 55
-    b.AutoButtonColor = false
-    b.ClipsDescendants = true
-    b.Parent = settScroll
-    Instance.new("UICorner",b).CornerRadius = UDim.new(0,4)
-    return b
-end
-
-local sTitle = Instance.new("TextLabel")
-sTitle.Size = UDim2.new(1,0,0,14)
-sTitle.BackgroundTransparency = 1
-sTitle.Text = "⚙ Settings"
-sTitle.TextColor3 = T().text
-sTitle.TextSize = 10
-sTitle.Font = Enum.Font.GothamBold
-sTitle.TextXAlignment = Enum.TextXAlignment.Left
-sTitle.ZIndex = 55
-sTitle.Parent = settScroll
-
-sL("Theme:", 22)
-local themeBtn = sB(getgenv().ToolCreatorSettings.theme, 22, 100, T().btn)
-local themeIdx = 1
-for i,n in ipairs(themeNames) do if n == getgenv().ToolCreatorSettings.theme then themeIdx = i end end
-
-sL("Stars FX:", 44)
-local starsBtn = sB(getgenv().ToolCreatorSettings.animStars and "ON" or "OFF", 44, 45, getgenv().ToolCreatorSettings.animStars and Color3.fromRGB(16,55,28) or Color3.fromRGB(50,16,20))
-
-sL("Auto Save:", 66)
-local autoBtn = sB(getgenv().ToolCreatorSettings.autoSave and "ON" or "OFF", 66, 45, getgenv().ToolCreatorSettings.autoSave and Color3.fromRGB(16,55,28) or Color3.fromRGB(50,16,20))
-
-sL("Sound FX:", 88)
-local soundBtn = sB(getgenv().ToolCreatorSettings.soundFX and "ON" or "OFF", 88, 45, getgenv().ToolCreatorSettings.soundFX and Color3.fromRGB(16,55,28) or Color3.fromRGB(50,16,20))
-
-sL("Code Size:", 110)
-local fSizeLbl = Instance.new("TextLabel")
-fSizeLbl.Size = UDim2.new(0,18,0,16)
-fSizeLbl.Position = UDim2.new(0.65,0,0,110)
-fSizeLbl.BackgroundTransparency = 1
-fSizeLbl.Text = tostring(getgenv().ToolCreatorSettings.codeSize)
-fSizeLbl.TextColor3 = T().text
-fSizeLbl.TextSize = 8
-fSizeLbl.Font = Enum.Font.GothamBold
-fSizeLbl.ZIndex = 55
-fSizeLbl.Parent = settScroll
-local fMinus = sB("-", 110, 20, T().btn)
-fMinus.Position = UDim2.new(0.52,0,0,110)
-local fPlus = sB("+", 110, 20, T().btn)
-fPlus.Position = UDim2.new(0.8,0,0,110)
-
-sL("Remove Tools:", 138)
-local remToolsBtn = sB("Remove", 138, 55, Color3.fromRGB(70,20,20))
-
-sL("Reset All:", 160)
-local resetBtn = sB("RESET", 160, 55, Color3.fromRGB(95,14,14))
-
-sL("Export All:", 182)
-local expAllBtn = sB("Export", 182, 55, Color3.fromRGB(38,28,75))
-
-sL("Duplicate Tool:", 204)
-local dupBtn = sB("Duplicate", 204, 65, Color3.fromRGB(55,30,10))
-
-sL("Save Profile:", 232)
-local profNameBox = Instance.new("TextBox")
-profNameBox.Size = UDim2.new(0.25,0,0,16)
-profNameBox.Position = UDim2.new(0.52,0,0,232)
-profNameBox.BackgroundColor3 = T().input
-profNameBox.Text = ""
-profNameBox.PlaceholderText = "Name"
-profNameBox.TextColor3 = T().text
-profNameBox.PlaceholderColor3 = T().dim
-profNameBox.TextSize = 7
-profNameBox.Font = Enum.Font.Gotham
-profNameBox.ClearTextOnFocus = false
-profNameBox.ZIndex = 55
-profNameBox.Parent = settScroll
-Instance.new("UICorner",profNameBox).CornerRadius = UDim.new(0,4)
-
-local profSaveBtn = sB("Save", 232, 35, Color3.fromRGB(18,48,90))
-profSaveBtn.Position = UDim2.new(0.8,0,0,232)
-
-sL("Load Profile:", 254)
-local profLoadBtn = sB("Load", 254, 55, Color3.fromRGB(16,50,78))
-
-sL("Tool History:", 280)
-local histBtn = sB("Show", 280, 55, Color3.fromRGB(42,28,75))
-
-local function applyTheme()
-    local t = T()
-    mainFrame.BackgroundColor3 = t.bg
-    titleBar.BackgroundColor3 = t.bar
-    titleLabel.TextColor3 = t.text
-    mainStroke.Color = t.accent
-    toggleBtn.BackgroundColor3 = t.bg
-    toggleBtn.TextColor3 = t.accent
-    toggleStroke.Color = t.accent
-    nameBox.BackgroundColor3 = t.input
-    nameBox.TextColor3 = t.text
-    codeBox.TextColor3 = t.code
-    searchBox.BackgroundColor3 = t.input
-    searchBox.TextColor3 = t.text
-    colorBox.BackgroundColor3 = t.input
-    colorBox.TextColor3 = t.text
-    consoleInput.BackgroundColor3 = t.input
-    consoleInput.TextColor3 = t.code
-    statusBar.BackgroundColor3 = t.bar
-    createStars()
-    refreshManageList(searchBox.Text)
-    refreshTemplates(tmpSearch.Text)
-    refreshSnippets()
-end
-
-themeBtn.MouseButton1Click:Connect(function()
-    ripple(themeBtn)
-    themeIdx = themeIdx % #themeNames + 1
-    getgenv().ToolCreatorSettings.theme = themeNames[themeIdx]
-    themeBtn.Text = themeNames[themeIdx]
-    themeBtn.BackgroundColor3 = T().btn
-    applyTheme()
-    addConsoleLine("Theme: "..themeNames[themeIdx], T().accent)
-    playSound(0.3)
-end)
-
-local function toggleSetting(key, btn)
-    getgenv().ToolCreatorSettings[key] = not getgenv().ToolCreatorSettings[key]
-    local on = getgenv().ToolCreatorSettings[key]
-    btn.Text = on and "ON" or "OFF"
-    TweenService:Create(btn,TweenInfo.new(0.1),{BackgroundColor3=on and Color3.fromRGB(16,55,28) or Color3.fromRGB(50,16,20)}):Play()
-end
-
-starsBtn.MouseButton1Click:Connect(function() ripple(starsBtn) toggleSetting("animStars",starsBtn) createStars() end)
-autoBtn.MouseButton1Click:Connect(function() ripple(autoBtn) toggleSetting("autoSave",autoBtn) end)
-soundBtn.MouseButton1Click:Connect(function() ripple(soundBtn) toggleSetting("soundFX",soundBtn) end)
-
-fMinus.MouseButton1Click:Connect(function()
-    local s = getgenv().ToolCreatorSettings.codeSize
-    if s > 6 then getgenv().ToolCreatorSettings.codeSize = s-1 codeBox.TextSize = s-1 fSizeLbl.Text = tostring(s-1) end
-end)
-
-fPlus.MouseButton1Click:Connect(function()
-    local s = getgenv().ToolCreatorSettings.codeSize
-    if s < 18 then getgenv().ToolCreatorSettings.codeSize = s+1 codeBox.TextSize = s+1 fSizeLbl.Text = tostring(s+1) end
-end)
-
-remToolsBtn.MouseButton1Click:Connect(function()
-    ripple(remToolsBtn)
-    local c = 0
-    for _,t in pairs(player.Backpack:GetChildren()) do if t:IsA("Tool") then t:Destroy() c=c+1 end end
-    if player.Character then for _,t in pairs(player.Character:GetChildren()) do if t:IsA("Tool") then t:Destroy() c=c+1 end end end
-    addConsoleLine("Removed "..c.." tools", T().warn)
-    showStatus("Removed "..c.." tools", T().warn)
-end)
-
-resetBtn.MouseButton1Click:Connect(function()
-    ripple(resetBtn)
-    getgenv().ToolCreatorData = {}
-    getgenv().ToolCreatorFavorites = {}
-    getgenv().ToolCreatorSnippets = {}
-    getgenv().ToolCreatorSettings.toolHistory = {}
-    refreshManageList("")
-    refreshSnippets()
-    nameBox.Text = ""
-    codeBox.Text = ""
-    lastText = ""
-    undoStack, redoStack = {}, {}
-    addConsoleLine("All data reset!", T().err)
-    showStatus("All data reset!", T().err)
-    notify("Reset", "All data cleared.", 3, "⚠")
-end)
-
-expAllBtn.MouseButton1Click:Connect(function()
-    ripple(expAllBtn)
-    local out = ""
-    for name, code in pairs(getgenv().ToolCreatorData) do
-        out = out.."---["..name.."]---\n"..code.."\n\n"
-    end
-    if out == "" then showStatus("Nothing to export", T().warn) return end
-    if setclipboard then
-        setclipboard(out)
-        showStatus("Exported!", Color3.fromRGB(175,155,255))
-        notify("Export", "All tools copied!", 2, "📋")
-    end
-end)
-
-dupBtn.MouseButton1Click:Connect(function()
-    ripple(dupBtn)
-    local n = nameBox.Text
-    local c = codeBox.Text
-    if n == "" or c == "" then showStatus("No tool to duplicate!", T().err) return end
-    local newName = n.." (Copy)"
-    getgenv().ToolCreatorData[newName] = c
-    refreshManageList(searchBox.Text)
-    showStatus("Duplicated: "..newName, T().success)
-    notify("Duplicate", newName, 2, "📋")
-end)
-
-profSaveBtn.MouseButton1Click:Connect(function()
-    ripple(profSaveBtn)
-    local pn = profNameBox.Text
-    if pn == "" then showStatus("Enter profile name!", T().err) return end
-    getgenv().ToolCreatorProfiles[pn] = {
-        data = getgenv().ToolCreatorData,
-        favs = getgenv().ToolCreatorFavorites,
-        snippets = getgenv().ToolCreatorSnippets,
-        settings = getgenv().ToolCreatorSettings
-    }
-    showStatus("Profile saved: "..pn, T().success)
-    notify("Profile", "Saved: "..pn, 2, "💾")
-end)
-
-profLoadBtn.MouseButton1Click:Connect(function()
-    ripple(profLoadBtn)
-    local pn = profNameBox.Text
-    if pn == "" then showStatus("Enter profile name!", T().err) return end
-    local prof = getgenv().ToolCreatorProfiles[pn]
-    if not prof then showStatus("Profile not found!", T().err) return end
-    if prof.data then getgenv().ToolCreatorData = prof.data end
-    if prof.favs then getgenv().ToolCreatorFavorites = prof.favs end
-    if prof.snippets then getgenv().ToolCreatorSnippets = prof.snippets end
-    if prof.settings then
-        for k,v in pairs(prof.settings) do getgenv().ToolCreatorSettings[k] = v end
-    end
-    applyTheme()
-    refreshManageList("")
-    refreshSnippets()
-    showStatus("Profile loaded: "..pn, T().success)
-    notify("Profile", "Loaded: "..pn, 2, "📥")
-end)
-
-histBtn.MouseButton1Click:Connect(function()
-    ripple(histBtn)
-    local h = getgenv().ToolCreatorSettings.toolHistory
-    if #h == 0 then showStatus("No history", T().warn) return end
-    addConsoleLine("--- Tool History ---", T().accent)
-    for i = math.max(1,#h-14), #h do
-        addConsoleLine(h[i].time.." → "..h[i].name, T().text)
-    end
-    switchTab("console")
-end)
-
-local function createTool(toolName, code, autoEquip)
-    local existing = player.Backpack:FindFirstChild(toolName)
-    if existing then existing:Destroy() end
-    if player.Character and player.Character:FindFirstChild(toolName) then
-        player.Character:FindFirstChild(toolName):Destroy()
-    end
-    local tool = Instance.new("Tool")
-    tool.Name = toolName
-    tool.RequiresHandle = hasHandle
-    tool.CanBeDropped = canDrop
-    tool.ToolTip = "TC v1.0: "..toolName
-    if hasHandle then
-        local handle = Instance.new("Part")
-        handle.Name = "Handle"
-        handle.Size = Vector3.new(1,1,3)
-        handle.Color = parseColor(colorBox.Text)
-        handle.Material = Enum.Material.Neon
-        handle.Parent = tool
-        local mesh = Instance.new("SpecialMesh")
-        mesh.MeshType = Enum.MeshType[meshTypes[meshIdx]]
-        mesh.Scale = Vector3.new(0.5,0.5,1.2)
-        mesh.Parent = handle
-        local light = Instance.new("PointLight")
-        light.Color = parseColor(colorBox.Text)
-        light.Range = 10
-        light.Brightness = 0.6
-        light.Parent = handle
-        local a0 = Instance.new("Attachment",handle)
-        a0.Position = Vector3.new(0,0,-1.5)
-        local a1 = Instance.new("Attachment",handle)
-        a1.Position = Vector3.new(0,0,1.5)
-        local trail = Instance.new("Trail")
-        trail.Attachment0 = a0
-        trail.Attachment1 = a1
-        trail.Color = ColorSequence.new(parseColor(colorBox.Text))
-        trail.Transparency = NumberSequence.new{NumberSequenceKeypoint.new(0,0.3),NumberSequenceKeypoint.new(1,1)}
-        trail.Lifetime = 0.5
-        trail.MinLength = 0.1
-        trail.Parent = handle
-    end
-    tool.Parent = player.Backpack
-    if autoEquip and player.Character and player.Character:FindFirstChild("Humanoid") then
-        player.Character.Humanoid:EquipTool(tool)
-    end
-    local execCount = 0
-    tool.Activated:Connect(function()
-        execCount = execCount + 1
-        addConsoleLine("["..toolName.."] #"..execCount, Color3.fromRGB(175,255,175))
-        local st = tick()
-        local ok, err = pcall(function() local fn = loadstring(code) if fn then fn() end end)
-        local elapsed = math.floor((tick()-st)*1000)
-        if ok then
-            addConsoleLine("["..toolName.."] OK ("..elapsed.."ms)", T().success)
-        else
-            addConsoleLine("["..toolName.."] ERR: "..tostring(err), T().err)
-            showStatus("Error! Console", T().err)
-        end
-    end)
-    tool.AncestryChanged:Connect(function()
-        if not tool.Parent then addConsoleLine("["..toolName.."] Removed", T().warn) end
-    end)
-    table.insert(getgenv().ToolCreatorSettings.toolHistory, {name=toolName, time=os.date("%H:%M:%S")})
-    if #getgenv().ToolCreatorSettings.toolHistory > 40 then table.remove(getgenv().ToolCreatorSettings.toolHistory, 1) end
-    return tool
-end
-
-createBtn.MouseButton1Click:Connect(function()
-    ripple(createBtn)
-    local n, c = nameBox.Text, codeBox.Text
-    if n == "" then showStatus("Enter name!", T().err) return end
-    if c == "" then showStatus("Enter code!", T().err) return end
-    createTool(n, c, false)
-    TweenService:Create(createBtn,TweenInfo.new(0.08),{BackgroundColor3=Color3.fromRGB(22,105,42)}):Play()
-    delay(0.25, function() TweenService:Create(createBtn,TweenInfo.new(0.2),{BackgroundColor3=T().btn}):Play() end)
-    playSound(0.3)
-    addConsoleLine("Created: "..n, T().success)
-    showStatus("Created: "..n, T().success)
-    notify("Tool Created", n.." → Backpack", 2, "⚒")
-    updateToolCount()
-end)
-
-createRunBtn.MouseButton1Click:Connect(function()
-    ripple(createRunBtn)
-    local n, c = nameBox.Text, codeBox.Text
-    if n == "" then showStatus("Enter name!", T().err) return end
-    if c == "" then showStatus("Enter code!", T().err) return end
-    createTool(n, c, true)
-    playSound(0.3)
-    addConsoleLine("Created+Equipped: "..n, T().success)
-    showStatus("Created+Equipped: "..n, T().success)
-    notify("Tool Equipped", n.." ready!", 2, "⚡")
-    updateToolCount()
-end)
-
-saveBtn.MouseButton1Click:Connect(function()
-    ripple(saveBtn)
-    local n, c = nameBox.Text, codeBox.Text
-    if n == "" then showStatus("Enter name!", T().err) return end
-    if c == "" then showStatus("Enter code!", T().err) return end
-    getgenv().ToolCreatorData[n] = c
-    addConsoleLine("Saved: "..n, Color3.fromRGB(95,195,255))
-    showStatus("Saved: "..n, Color3.fromRGB(95,195,255))
-    if currentTab == "manage" then refreshManageList(searchBox.Text) end
-    playSound(0.2)
-    updateToolCount()
-end)
-
-testBtn.MouseButton1Click:Connect(function()
-    ripple(testBtn)
-    local c = codeBox.Text
-    if c == "" then showStatus("No code!", T().err) return end
-    addConsoleLine("[Test] Running...", Color3.fromRGB(95,195,255))
-    local st = tick()
-    local ok, err = pcall(function() local fn = loadstring(c) if fn then fn() end end)
-    local elapsed = math.floor((tick()-st)*1000)
-    if ok then
-        addConsoleLine("[Test] OK ("..elapsed.."ms)", T().success)
-        showStatus("Test passed ("..elapsed.."ms)", T().success)
-    else
-        addConsoleLine("[Test] ERR: "..tostring(err), T().err)
-        showStatus("Test failed!", T().err)
-    end
-end)
-
-clearCodeBtn.MouseButton1Click:Connect(function()
-    ripple(clearCodeBtn)
-    if codeBox.Text ~= "" then
-        table.insert(undoStack, codeBox.Text)
-        lastText = ""
-        codeBox.Text = ""
-        showStatus("Code cleared", T().warn)
-    end
-end)
-
-delBtn.MouseButton1Click:Connect(function()
-    ripple(delBtn)
-    local target = selectedSave or nameBox.Text
-    if target == "" then showStatus("Select or enter name!", T().err) return end
-    if getgenv().ToolCreatorData[target] then
-        getgenv().ToolCreatorData[target] = nil
-        getgenv().ToolCreatorFavorites[target] = nil
-        addConsoleLine("Deleted: "..target, T().warn)
-        showStatus("Deleted: "..target, T().warn)
-        selectedSave = nil
-        refreshManageList(searchBox.Text)
-        updateToolCount()
-    else
-        showStatus("Not found!", T().err)
-    end
-end)
-
-loadBtn.MouseButton1Click:Connect(function()
-    ripple(loadBtn)
-    local target = selectedSave or nameBox.Text
-    if target == "" then showStatus("Select or enter name!", T().err) return end
-    if getgenv().ToolCreatorData[target] then
-        nameBox.Text = target
-        lastText = getgenv().ToolCreatorData[target]
-        codeBox.Text = getgenv().ToolCreatorData[target]
-        undoStack, redoStack = {}, {}
-        switchTab("create")
-        showStatus("Loaded: "..target, T().success)
-    else
-        showStatus("Not found!", T().err)
-    end
-end)
-
-copyBtn.MouseButton1Click:Connect(function()
-    ripple(copyBtn)
-    local target = selectedSave or nameBox.Text
-    if target == "" then showStatus("Select or enter name!", T().err) return end
-    local code = getgenv().ToolCreatorData[target] or codeBox.Text
-    if code and code ~= "" and setclipboard then
-        setclipboard(code)
-        showStatus("Copied!", Color3.fromRGB(175,155,255))
-    end
-end)
-
-clearAllBtn.MouseButton1Click:Connect(function()
-    ripple(clearAllBtn)
-    local c = 0
-    for _ in pairs(getgenv().ToolCreatorData) do c = c + 1 end
-    if c == 0 then showStatus("Nothing to clear", T().warn) return end
-    getgenv().ToolCreatorData = {}
-    getgenv().ToolCreatorFavorites = {}
-    addConsoleLine("Cleared "..c.." saves", T().err)
-    showStatus("Cleared "..c, T().warn)
-    refreshManageList("")
-    updateToolCount()
-end)
-
-local isMin = false
-local fullSz
-
-minBtn.MouseButton1Click:Connect(function()
-    ripple(minBtn)
-    isMin = not isMin
-    if isMin then
-        fullSz = mainFrame.Size
-        TweenService:Create(mainFrame,TweenInfo.new(0.2,Enum.EasingStyle.Back,Enum.EasingDirection.In),{Size=UDim2.new(0,mainFrame.Size.X.Offset,0,32)}):Play()
-        minBtn.Text = "+"
-    else
-        TweenService:Create(mainFrame,TweenInfo.new(0.2,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{Size=fullSz or UDim2.new(0,305,0,430)}):Play()
-        minBtn.Text = "—"
-    end
-end)
-
-toggleBtn.MouseButton1Click:Connect(function()
-    ripple(toggleBtn)
-    mainFrame.Visible = not mainFrame.Visible
-    if mainFrame.Visible then
-        mainFrame.BackgroundTransparency = 1
-        TweenService:Create(mainFrame,TweenInfo.new(0.2),{BackgroundTransparency=0}):Play()
-        if isMin then isMin = false minBtn.Text = "—" mainFrame.Size = UDim2.new(0,305,0,430) end
-        refreshManageList(searchBox.Text)
-        errCount = 0
-        badge.Visible = false
-        badge.Text = "0"
-    end
-end)
-
-closeBtn.MouseButton1Click:Connect(function()
-    ripple(closeBtn)
-    TweenService:Create(mainFrame,TweenInfo.new(0.12),{BackgroundTransparency=1}):Play()
-    delay(0.12, function() mainFrame.Visible = false end)
-end)
-
-for id, btn in pairs(tabButtons) do
-    btn.MouseButton1Click:Connect(function()
-        if id == "console" then errCount = 0 badge.Visible = false badge.Text = "0" end
-        if id == "manage" then refreshManageList(searchBox.Text) end
-        if id == "snippets" then refreshSnippets() end
-    end)
-end
 
 UIS.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == getgenv().ToolCreatorSettings.keybind then
-        toggleBtn.MouseButton1Click:Fire()
-    end
+	if gpe then return end
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		local key = input.KeyCode.Name:upper()
+		if Keybinds[key] and ActiveTools[Keybinds[key]] then
+			local tn = Keybinds[key]
+			if ToolCooldowns[tn] then return end
+			local a = ActiveTools[tn]
+			local cond = a.condition or ""
+			if cond ~= "" then
+				local ok, r = pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); return setfenv(loadstring("return " .. cond), env)() end)
+				if not ok or not r then return end
+			end
+			ToolCooldowns[tn] = true
+			if ToolStats[tn] then ToolStats[tn].uses = ToolStats[tn].uses + 1; ToolStats[tn].lastUsed = os.date("%H:%M:%S") end
+			pcall(function() local env = setmetatable({vars = ToolVars, player = Player}, {__index = getfenv()}); setfenv(loadstring(a.code), env)() end)
+			AddLog("Key [" .. key .. "] → " .. tn)
+			local cd = tonumber(a.cooldown) or 0
+			if cd > 0 then task.delay(cd, function() ToolCooldowns[tn] = false end) else ToolCooldowns[tn] = false end
+		end
+	end
 end)
 
-spawn(function()
-    while sg.Parent do
-        local t = T()
-        local r,g,b = t.accent.R*255,t.accent.G*255,t.accent.B*255
-        TweenService:Create(mainStroke,TweenInfo.new(3,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{Color=Color3.fromRGB(math.min(r+45,255),math.min(g+35,255),math.min(b+25,255))}):Play()
-        TweenService:Create(toggleStroke,TweenInfo.new(3,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{Color=Color3.fromRGB(math.min(r+45,255),math.min(g+35,255),math.min(b+25,255))}):Play()
-        wait(3)
-        TweenService:Create(mainStroke,TweenInfo.new(3,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{Color=t.accent}):Play()
-        TweenService:Create(toggleStroke,TweenInfo.new(3,Enum.EasingStyle.Sine,Enum.EasingDirection.InOut),{Color=t.accent}):Play()
-        wait(3)
-    end
+task.spawn(function()
+	while getgenv().ToolsCreator and ScreenGui.Parent do
+		local tc = 0; for _ in pairs(ActiveTools) do tc = tc + 1 end
+		CountLabel.Text = "[" .. tc .. "]"
+
+		local favs, others = {}, {}
+		for name, v in pairs(ActiveTools) do
+			local cd = ToolCooldowns[name] and "⏳" or "✓"
+			local fav = Favorites[name] and "⭐" or ""
+			local uses = ToolStats[name] and ToolStats[name].uses or 0
+			local streak = ToolStats[name] and ToolStats[name].streak or 0
+			local ev = (v.event and v.event ~= "") and "🔔" or ""
+			local ch = (v.chain and v.chain ~= "") and "🔗" or ""
+			local line = cd .. fav .. ev .. ch .. " " .. name .. " [" .. v.cooldown .. "s] x" .. uses
+			if streak > 1 then line = line .. " 🔥" .. streak end
+			if Favorites[name] then table.insert(favs, line) else table.insert(others, line) end
+		end
+		local at = {}; for _, l in ipairs(favs) do table.insert(at, l) end; for _, l in ipairs(others) do table.insert(at, l) end
+		activeLabel.Text = #at > 0 and table.concat(at, "\n") or "No active tools"
+
+		local kbs = {}; for k, t in pairs(Keybinds) do table.insert(kbs, "[" .. k .. "] → " .. t) end
+		kbLabel.Text = #kbs > 0 and table.concat(kbs, "\n") or "No keybinds"
+
+		local sv = {}; for name, data in pairs(SavedTools) do
+			local ns = {}; for _, t in pairs(data) do table.insert(ns, t.name) end
+			table.insert(sv, "📁 " .. name .. " (" .. #data .. "): " .. table.concat(ns, ", "))
+		end
+		savesLabel.Text = #sv > 0 and table.concat(sv, "\n") or "No saves"
+
+		logLabel.Text = #LogEntries > 0 and table.concat(LogEntries, "\n") or "No entries"
+
+		local mc = {}; for mn, m in pairs(Macros) do
+			local lp = getgenv()["macro_loop_" .. mn] and " 🔁" or ""
+			local rp = m.repeats and m.repeats ~= 1 and (" x" .. m.repeats) or ""
+			table.insert(mc, "▶ " .. mn .. " (" .. #m.tools .. ", " .. m.delay .. "s)" .. rp .. lp)
+		end
+		macroLabel.Text = #mc > 0 and table.concat(mc, "\n") or "No macros"
+
+		local cb = {}; local now = tick()
+		for i, c in ipairs(ComboTracker) do
+			if i > 8 then break end
+			table.insert(cb, c.name .. " (" .. string.format("%.1f", now - c.time) .. "s)")
+		end
+		comboLabel.Text = #cb > 0 and table.concat(cb, "\n") or "No combos"
+
+		local gps = {}; for gn, gt in pairs(ToolGroups) do table.insert(gps, "📁 " .. gn .. ": " .. table.concat(gt, ", ")) end
+		grpLabel.Text = #gps > 0 and table.concat(gps, "\n") or "No groups"
+
+		local vrs = {}; for k, v in pairs(ToolVars) do table.insert(vrs, k .. " = " .. tostring(v) .. " (" .. type(v) .. ")") end
+		varLabel.Text = #vrs > 0 and table.concat(vrs, "\n") or "No variables"
+
+		local sps = {}; for k in pairs(Snippets) do table.insert(sps, "✂ " .. k) end
+		snipLabel.Text = #sps > 0 and table.concat(sps, "\n") or "No snippets"
+
+		local pfs = {}; for k, p in pairs(Profiles) do
+			local ptc = p.tools and #p.tools or 0
+			table.insert(pfs, "👤 " .. k .. " (" .. ptc .. " tools)" .. (k == currentProfile and " ◄" or ""))
+		end
+		profLabel.Text = #pfs > 0 and table.concat(pfs, "\n") or "No profiles"
+
+		local totalU, totalE, totalT = 0, 0, 0
+		for _, s in pairs(ToolStats) do totalU = totalU + s.uses; totalE = totalE + s.errors; totalT = totalT + s.totalTime end
+		local sc2 = 0; for _ in pairs(SavedTools) do sc2 = sc2 + 1 end
+		local mc2 = 0; for _ in pairs(Macros) do mc2 = mc2 + 1 end
+		local gc2 = 0; for _ in pairs(ToolGroups) do gc2 = gc2 + 1 end
+		local vc2 = 0; for _ in pairs(ToolVars) do vc2 = vc2 + 1 end
+		local sc3 = 0; for _ in pairs(Snippets) do sc3 = sc3 + 1 end
+		local pc2 = 0; for _ in pairs(Profiles) do pc2 = pc2 + 1 end
+		local st = {
+			"Tools:" .. tc .. " Saves:" .. sc2 .. " Macros:" .. mc2,
+			"Groups:" .. gc2 .. " Vars:" .. vc2 .. " Snips:" .. sc3,
+			"Profiles:" .. pc2 .. " Profile:" .. currentProfile,
+			"Uses:" .. totalU .. " Errors:" .. totalE,
+			"Exec time:" .. string.format("%.2f", totalT) .. "s",
+			"Undo:" .. #UndoHistory .. " Keybinds:" .. #kbs
+		}
+		local topN, topU = "N/A", 0
+		for n, s in pairs(ToolStats) do if s.uses > topU then topU = s.uses; topN = n end end
+		if topU > 0 then table.insert(st, "Top: " .. topN .. " (x" .. topU .. ")") end
+		local topS, topSN = 0, "N/A"
+		for n, s in pairs(ToolStats) do if s.bestStreak > topS then topS = s.bestStreak; topSN = n end end
+		if topS > 1 then table.insert(st, "Best streak: " .. topSN .. " (x" .. topS .. ")") end
+		statsLabel.Text = table.concat(st, "\n")
+
+		task.wait(0.5)
+	end
 end)
 
-spawn(function()
-    while sg.Parent do
-        if badge.Visible then
-            TweenService:Create(badge,TweenInfo.new(0.35),{BackgroundTransparency=0.5}):Play()
-            wait(0.35)
-            TweenService:Create(badge,TweenInfo.new(0.35),{BackgroundTransparency=0}):Play()
-            wait(0.35)
-        else
-            wait(1)
-        end
-    end
+Player.CharacterAdded:Connect(function()
+	if not autoRespawnTools then return end
+	task.wait(1)
+	local d = {}; for _, v in pairs(ActiveTools) do table.insert(d, {name = v.name, cooldown = v.cooldown, code = v.code, desc = v.desc, condition = v.condition, chain = v.chain, event = v.event}) end
+	for _, x in pairs(d) do SpawnTool(x.name, x.cooldown, x.code, x.desc, x.condition, x.chain, x.event) end
+	if #d > 0 then AddLog("Respawn: " .. #d .. " tools") end
 end)
 
-spawn(function()
-    local r = 0
-    while sg.Parent do
-        r = (r+1)%360
-        toggleBtn.Rotation = math.sin(math.rad(r))*4
-        wait(0.04)
-    end
-end)
-
-spawn(function()
-    while sg.Parent do
-        local mem = math.floor(gcinfo())
-        local toolsBp = 0
-        for _,t in pairs(player.Backpack:GetChildren()) do if t:IsA("Tool") then toolsBp = toolsBp + 1 end end
-        if player.Character then
-            for _,t in pairs(player.Character:GetChildren()) do if t:IsA("Tool") then toolsBp = toolsBp + 1 end end
-        end
-        toolCountStatus.Text = toolsBp.." equip | "..mem.."KB"
-        wait(2)
-    end
-end)
-
-refreshManageList("")
-updateToolCount()
-notify("Tools Creator v1.0", "Loaded! Tap ⚒ to open.", 3, "✦")
+AddLog("Tools Creator V1.0 initialized")
+Notify("✦ Tools Creator V1.0 loaded!", Color3.fromRGB(155, 105, 250))
